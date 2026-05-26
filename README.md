@@ -17,15 +17,21 @@ cd drm-treinamentos
 # 2. Instale as dependências
 npm install
 
-# 3. Inicie a API
+# 3. Opcional: crie um .env com suas senhas reais
+# Sem .env, o ambiente local usa admin/admin123 e responsavel/admin123
+copy .env.example .env
+
+# 4. Inicie a API
 npm run api
 
-# 4. Em outro terminal, inicie o frontend
+# 5. Em outro terminal, inicie o frontend
 npm run dev
 
-# 5. Acesse no navegador
+# 6. Acesse no navegador
 # http://localhost:5173
 ```
+
+O frontend local encaminha `/api` para `http://127.0.0.1:3001`, então não é necessário definir `VITE_API_URL` para desenvolvimento.
 
 ## Rodando com Docker
 

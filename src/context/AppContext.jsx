@@ -52,6 +52,10 @@ function applyStudentStatus(student, field, value, motivo = null, actorName = 'R
   return updated;
 }
 
+function isApiResponseError(error) {
+  return Boolean(error?.status);
+}
+
 export function AppProvider({ children }) {
   const [user, setUser] = useState(() => {
     try {
@@ -117,9 +121,10 @@ export function AppProvider({ children }) {
       setUser(result.user);
       localStorage.setItem('drmUser', JSON.stringify(result.user));
       return { success: true };
-    } catch {
-      setApiError('Não foi possível confirmar o login no servidor.');
-      return { success: false, error: 'Usuário ou senha inválidos.' };
+    } catch (error) {
+      const message = error?.message || 'Usuário ou senha inválidos.';
+      setApiError(message);
+      return { success: false, error: message };
     }
   }, []);
 
@@ -135,7 +140,12 @@ export function AppProvider({ children }) {
       setCourses(prev => [...prev, newCourse]);
       setApiError(null);
       return newCourse;
-    } catch {
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
       const newCourse = {
         ...course,
         id: Date.now(),
@@ -155,7 +165,12 @@ export function AppProvider({ children }) {
       setCourses(prev => prev.map(item => (String(item.id) === String(courseId) ? updatedCourse : item)));
       setApiError(null);
       return updatedCourse;
-    } catch {
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
       const updatedCourse = {
         ...course,
         id: courseId,
@@ -202,7 +217,12 @@ export function AppProvider({ children }) {
       setApiError(null);
       addNotification('Chamada salva com sucesso.', 'success');
       return result;
-    } catch {
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
       const now = new Date().toISOString();
       setStudents(prev => prev.map(student => {
         if (String(student.cursoId) !== String(courseId) || attendance[student.id] === undefined) return student;
@@ -238,7 +258,12 @@ export function AppProvider({ children }) {
       setApiError(null);
       addNotification('Cronograma atualizado com sucesso.', 'success');
       return updatedCourse;
-    } catch {
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
       const now = new Date().toISOString();
       let fallbackCourse = null;
       setCourses(prev => prev.map(course => {
@@ -293,7 +318,12 @@ export function AppProvider({ children }) {
         addNotification('Certificado autorizado e assinado digitalmente.', 'success');
       }
       return updatedStudent;
-    } catch {
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
       let fallbackStudent = null;
       setStudents(prev => prev.map(s => {
         if (s.id !== studentId) return s;
@@ -313,15 +343,21 @@ export function AppProvider({ children }) {
       const updatedStudent = await api.markCertificateSent(studentId);
       setStudents(prev => prev.map(s => (s.id === studentId ? updatedStudent : s)));
       setApiError(null);
-    } catch {
-      setStudents(prev => prev.map(s =>
-        s.id === studentId
-          ? { ...s, certificadoEnviado: true, dataEnvio: new Date().toISOString().split('T')[0] }
-          : s
-      ));
-      addNotification('Backend indisponível. Envio marcado apenas nesta sessão.', 'warning');
+      if (updatedStudent.certificadoEnviado) {
+        addNotification('Certificado enviado com sucesso!', 'success');
+      } else {
+        addNotification(updatedStudent.certificadoEmailErro || 'Certificado não foi enviado.', 'warning');
+      }
+      return updatedStudent;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível confirmar o envio.', 'warning');
+      return null;
     }
-    addNotification(`Certificado enviado com sucesso!`, 'success');
   }, [addNotification]);
 
   const markAllCertificadosSent = useCallback(async () => {
@@ -329,15 +365,26 @@ export function AppProvider({ children }) {
       const result = await api.markAllCertificatesSent();
       setStudents(result.students);
       setApiError(null);
-    } catch {
-      setStudents(prev => prev.map(s =>
-        s.statusCertificado === 'aprovado' && !s.certificadoEnviado
-          ? { ...s, certificadoEnviado: true, dataEnvio: new Date().toISOString().split('T')[0] }
-          : s
+      const failed = result.students.filter(student => (
+        student.statusCertificado === 'aprovado' &&
+        !student.certificadoEnviado &&
+        student.certificadoEmailErro
       ));
-      addNotification('Backend indisponível. Envios marcados apenas nesta sessão.', 'warning');
+      if (failed.length > 0) {
+        addNotification(`${failed.length} certificado(s) não foram enviados. Verifique a configuração SMTP.`, 'warning');
+      } else {
+        addNotification('Todos os certificados aprovados foram enviados!', 'success');
+      }
+      return result;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível confirmar os envios.', 'warning');
+      return null;
     }
-    addNotification('Todos os certificados aprovados foram enviados!', 'success');
   }, [addNotification]);
 
   const value = {

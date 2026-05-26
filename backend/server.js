@@ -17,10 +17,39 @@ import {
   sampleCertificateStudent,
 } from '../src/data/certificateDefaults.js';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+function loadEnvFile(filePath) {
+  if (!existsSync(filePath)) return;
+
+  const lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex === -1) return;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    let value = trimmed.slice(separatorIndex + 1).trim();
+    if (!key || process.env[key] !== undefined) return;
+
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  });
+}
+
+loadEnvFile(join(__dirname, '..', '.env'));
+
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || '127.0.0.1';
+const LOCAL_DEV_PASSWORD = ['127.0.0.1', 'localhost'].includes(HOST) ? 'admin123' : '';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = process.env.DATA_FILE || join(__dirname, 'data.json');
 const LOGO_FILE = join(__dirname, '..', 'public', 'brand', 'drm-certi-sem-fundo.png');
 const CERTIFICATE_PAGE_WIDTH = 1123;
@@ -36,7 +65,7 @@ const APP_USERS = [
   {
     id: 1,
     username: process.env.ADMIN_USERNAME || 'admin',
-    password: process.env.ADMIN_PASSWORD || '',
+    password: process.env.ADMIN_PASSWORD || LOCAL_DEV_PASSWORD,
     name: process.env.ADMIN_NAME || 'Administrador DRM',
     role: 'admin',
     email: process.env.ADMIN_EMAIL || 'admin@drmtreinamentos.com',
@@ -44,7 +73,7 @@ const APP_USERS = [
   {
     id: 2,
     username: process.env.RESPONSAVEL_USERNAME || 'responsavel',
-    password: process.env.RESPONSAVEL_PASSWORD || '',
+    password: process.env.RESPONSAVEL_PASSWORD || LOCAL_DEV_PASSWORD,
     name: process.env.RESPONSAVEL_NAME || 'Responsável DRM',
     role: 'responsavel',
     email: process.env.RESPONSAVEL_EMAIL || 'deivson@drmtreinamentos.com',

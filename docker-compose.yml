@@ -6,6 +6,12 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 3001
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ADMIN_NAME: ${ADMIN_NAME:-Administrador DRM}
+      RESPONSAVEL_USERNAME: ${RESPONSAVEL_USERNAME:-responsavel}
+      RESPONSAVEL_PASSWORD: ${RESPONSAVEL_PASSWORD:-admin123}
+      RESPONSAVEL_NAME: ${RESPONSAVEL_NAME:-Responsável DRM}
     command: node --watch server.js
     ports:
       - "3001:3001"
