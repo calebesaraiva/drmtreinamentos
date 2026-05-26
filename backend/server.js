@@ -1313,7 +1313,9 @@ const server = createServer(async (req, res) => {
       badRequest(res, 'JSON invalido.');
       return;
     }
-    const user = APP_USERS.find(item => item.username === body.username && item.password === body.password);
+    const username = String(body.username || '').trim();
+    const password = String(body.password || '').trim();
+    const user = APP_USERS.find(item => item.username === username && item.password === password);
     if (!user) {
       sendJson(res, 401, { error: 'Usuario ou senha invalidos.' });
       return;

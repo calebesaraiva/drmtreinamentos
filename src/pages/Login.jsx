@@ -19,12 +19,14 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
-    if (!form.username || !form.password) {
+    const username = form.username.trim();
+    const password = form.password.trim();
+    if (!username || !password) {
       setError('Preencha todos os campos.');
       return;
     }
     setLoading(true);
-    const result = await login(form.username, form.password);
+    const result = await login(username, password);
     setLoading(false);
     if (result.success) {
       navigate(redirectTo, { replace: true });
