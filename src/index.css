@@ -117,7 +117,7 @@
   -webkit-print-color-adjust: exact;
 }
 
-.certificate-demo-print {
+.certificate-preview-print {
   display: none;
 }
 
@@ -149,7 +149,7 @@
     background: white !important;
     overflow: visible !important;
   }
-  .certificate-demo-print {
+  .certificate-preview-print {
     display: block !important;
   }
   .certificate-pages {

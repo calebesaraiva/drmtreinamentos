@@ -7,7 +7,6 @@ import nodemailer from 'nodemailer';
 import {
   MOCK_STUDENTS,
   MOCK_COURSES,
-  MOCK_USERS,
   CHART_DATA_MONTHLY,
 } from '../src/data/mockData.js';
 
@@ -23,6 +22,24 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = process.env.SMTP_FROM || (SMTP_USER ? `DRM Treinamentos <${SMTP_USER}>` : '');
+const APP_USERS = [
+  {
+    id: 1,
+    username: process.env.ADMIN_USERNAME || 'admin',
+    password: process.env.ADMIN_PASSWORD || '',
+    name: process.env.ADMIN_NAME || 'Administrador DRM',
+    role: 'admin',
+    email: process.env.ADMIN_EMAIL || 'admin@drmtreinamentos.com',
+  },
+  {
+    id: 2,
+    username: process.env.RESPONSAVEL_USERNAME || 'responsavel',
+    password: process.env.RESPONSAVEL_PASSWORD || '',
+    name: process.env.RESPONSAVEL_NAME || 'Responsável DRM',
+    role: 'responsavel',
+    email: process.env.RESPONSAVEL_EMAIL || 'deivson@drmtreinamentos.com',
+  },
+].filter(user => user.username && user.password);
 
 const dbPool = DATABASE_URL
   ? new Pool({
@@ -44,6 +61,13 @@ const mailTransport = SMTP_HOST && SMTP_USER && SMTP_PASS
   : null;
 
 function fallbackData() {
+  if (dbPool) {
+    return {
+      students: [],
+      courses: [],
+    };
+  }
+
   if (!existsSync(DATA_FILE)) {
     return {
       students: structuredClone(MOCK_STUDENTS),
@@ -864,7 +888,7 @@ const server = createServer(async (req, res) => {
       badRequest(res, 'JSON invalido.');
       return;
     }
-    const user = MOCK_USERS.find(item => item.username === body.username && item.password === body.password);
+    const user = APP_USERS.find(item => item.username === body.username && item.password === body.password);
     if (!user) {
       sendJson(res, 401, { error: 'Usuario ou senha invalidos.' });
       return;

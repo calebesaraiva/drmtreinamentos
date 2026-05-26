@@ -1,8 +1,8 @@
-// Mock data para demonstração do sistema
+// Dados locais usados apenas quando a API não está disponível no ambiente de desenvolvimento.
 
 export const MOCK_USERS = [
-  { id: 1, username: 'admin', password: 'admin123', name: 'Administrador DRM', role: 'admin', email: 'admin@drmtreinamentos.com.br' },
-  { id: 2, username: 'responsavel', password: 'resp123', name: 'Carlos Mendes', role: 'responsavel', email: 'carlos@drmtreinamentos.com.br' },
+  { id: 1, username: 'admin', password: '', name: 'Administrador DRM', role: 'admin', email: 'admin@drmtreinamentos.com.br' },
+  { id: 2, username: 'responsavel', password: '', name: 'Carlos Mendes', role: 'responsavel', email: 'carlos@drmtreinamentos.com.br' },
 ];
 
 export const MOCK_COURSES = [

@@ -1,13 +1,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { MOCK_STUDENTS, MOCK_COURSES, MOCK_USERS } from '../data/mockData';
+import { MOCK_STUDENTS, MOCK_COURSES } from '../data/mockData';
 import { api } from '../services/api';
 
 const AppContext = createContext(null);
-
-function safeUser(user) {
-  const { password, ...safe } = user;
-  return safe;
-}
 
 function buildCertificateAuthorization(actorName = 'Responsável DRM') {
   const now = new Date();
@@ -65,15 +60,12 @@ export function AppProvider({ children }) {
       return null;
     }
   });
-  const [students, setStudents] = useState(MOCK_STUDENTS);
-  const [courses, setCourses] = useState(MOCK_COURSES);
+  const [students, setStudents] = useState([]);
+  const [courses, setCourses] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [notifications, setNotifications] = useState([
-    { id: 1, msg: '3 cadastros aguardando análise', type: 'warning', read: false },
-    { id: 2, msg: '2 certificados prontos para envio', type: 'info', read: false },
-  ]);
+  const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
     let ignore = false;
@@ -93,7 +85,7 @@ export function AppProvider({ children }) {
         }
       } catch {
         if (!ignore) {
-          setApiError('Backend indisponível. Usando dados locais temporariamente.');
+          setApiError('Não foi possível conectar ao servidor.');
         }
       } finally {
         if (!ignore) setLoadingData(false);
@@ -125,17 +117,8 @@ export function AppProvider({ children }) {
       setUser(result.user);
       localStorage.setItem('drmUser', JSON.stringify(result.user));
       return { success: true };
-    } catch (error) {
-      const found = MOCK_USERS.find(u => u.username === username && u.password === password);
-      if (found) {
-        const localUser = safeUser(found);
-        setUser(localUser);
-        localStorage.setItem('drmUser', JSON.stringify(localUser));
-        if (!error.status) {
-          setApiError('Backend indisponível. Login local usado temporariamente.');
-        }
-        return { success: true };
-      }
+    } catch {
+      setApiError('Não foi possível confirmar o login no servidor.');
       return { success: false, error: 'Usuário ou senha inválidos.' };
     }
   }, []);
@@ -200,7 +183,7 @@ export function AppProvider({ children }) {
       setApiError(null);
       return { students: loadedStudents, courses: loadedCourses };
     } catch {
-      setApiError('Backend indisponível. Usando dados locais temporariamente.');
+      setApiError('Não foi possível conectar ao servidor.');
       return null;
     }
   }, []);

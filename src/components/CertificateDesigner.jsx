@@ -629,7 +629,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
   const [signatureSaved, setSignatureSaved] = useState(false);
   const [pendingTextChanges, setPendingTextChanges] = useState({});
   const [deleteRequested, setDeleteRequested] = useState(false);
-  const [demoSnapshot, setDemoSnapshot] = useState(null);
+  const [previewSnapshot, setpreviewSnapshot] = useState(null);
   const fileInputRef = useRef(null);
   const signatureInputRef = useRef(null);
   const mergedLayout = useMemo(() => mergeCertificateLayout(layout), [layout]);
@@ -673,7 +673,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
 
     saveCertificateLayout(layoutSnapshot);
     saveCertificateConfig(configSnapshot);
-    flushSync(() => setDemoSnapshot({
+    flushSync(() => setpreviewSnapshot({
       config: configSnapshot,
       layout: layoutSnapshot,
     }));
@@ -683,7 +683,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
   };
 
   useEffect(() => {
-    const handleAfterPrint = () => setDemoSnapshot(null);
+    const handleAfterPrint = () => setpreviewSnapshot(null);
     window.addEventListener('afterprint', handleAfterPrint);
     return () => window.removeEventListener('afterprint', handleAfterPrint);
   }, []);
@@ -844,12 +844,12 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
         />
       </div>
 
-      {demoSnapshot && createPortal(
-        <div className="certificate-print-area certificate-demo-print" aria-hidden="true">
+      {previewSnapshot && createPortal(
+        <div className="certificate-print-area certificate-preview-print" aria-hidden="true">
           <CertificatePreview
-            config={demoSnapshot.config}
+            config={previewSnapshot.config}
             aluno={sampleCertificateStudent}
-            layout={demoSnapshot.layout}
+            layout={previewSnapshot.layout}
           />
         </div>,
         document.body,
@@ -977,7 +977,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-blue-900 mb-1">Data e hora do demonstrativo</label>
+            <label className="block text-xs font-semibold text-blue-900 mb-1">Data e hora da prévia</label>
             <input
               type="datetime-local"
               value={currentConfig.assinaturaDigitalAutorizadaEm || ''}
@@ -990,7 +990,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-blue-900 mb-1">Código do demonstrativo</label>
+            <label className="block text-xs font-semibold text-blue-900 mb-1">Código da prévia</label>
             <input
               type="text"
               value={currentConfig.assinaturaDigitalCodigo || ''}
@@ -1007,7 +1007,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
             onClick={handleAuthorizeSignature}
             className="btn-primary w-full text-sm"
           >
-            Preencher demonstrativo agora
+            Preencher prévia agora
           </button>
         </div>
 
@@ -1292,7 +1292,7 @@ export default function CertificateDesigner({ config, layout, onChange, onSave, 
           className="btn-secondary w-full text-sm no-print"
         >
           <Download className="w-4 h-4" />
-          Baixar demonstrativo
+          Baixar prévia
         </button>
 
         <div className="grid grid-cols-2 gap-2 pt-2">
