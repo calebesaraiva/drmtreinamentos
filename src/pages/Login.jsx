@@ -119,12 +119,6 @@ export default function Login() {
               ) : 'Entrar'}
             </button>
           </form>
-
-          {/* Demo hint */}
-          <div className="mt-6 p-3 bg-gray-50 rounded-lg border border-gray-100">
-            <p className="text-xs text-gray-500 font-medium mb-1">Credenciais de demonstração:</p>
-            <p className="text-xs text-gray-400">Usuário: <span className="font-mono font-semibold text-gray-600">admin</span> / Senha: <span className="font-mono font-semibold text-gray-600">admin123</span></p>
-          </div>
         </div>
 
         <p className="text-center text-blue-400 text-xs mt-6">

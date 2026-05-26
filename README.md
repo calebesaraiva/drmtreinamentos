@@ -58,13 +58,6 @@ npm run docker:down
 - `PATCH /api/students/:id/status`
 - `POST /api/courses`
 
-## Login de Demonstração
-
-| Usuário       | Senha      | Perfil        |
-|---------------|------------|---------------|
-| `admin`       | `admin123` | Administrador |
-| `responsavel` | `resp123`  | Responsável   |
-
 ## Funcionalidades
 
 - **Login** — autenticação com usuário e senha
