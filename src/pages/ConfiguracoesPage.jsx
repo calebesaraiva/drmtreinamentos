@@ -11,6 +11,7 @@ import CertificateDesigner, {
   saveCertificateLayout,
 } from '../components/CertificateDesigner';
 import { defaultCertificateConfig, mergeCertificateConfig, sampleCertificateStudent } from '../data/certificateDefaults';
+import { api } from '../services/api';
 
 export default function ConfiguracoesPage() {
   const [config, setConfig] = useState(() => {
@@ -19,22 +20,54 @@ export default function ConfiguracoesPage() {
   });
   const [certificateLayout, setCertificateLayout] = useState(() => getStoredCertificateLayout());
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [tab, setTab] = useState('empresa');
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadCertificateSettings() {
+      try {
+        const settings = await api.getCertificateSettings();
+        if (ignore) return;
+        if (settings?.config) {
+          const nextConfig = mergeCertificateConfig(settings.config);
+          setConfig(nextConfig);
+          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
+        }
+        if (settings?.layout) {
+          setCertificateLayout(settings.layout);
+          saveCertificateLayout(settings.layout);
+        }
+      } catch {
+        // Mantém a configuração local se o servidor estiver indisponível.
+      }
+    }
+    loadCertificateSettings();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const handleChange = (key, val) => {
     setConfig(p => ({ ...p, [key]: val }));
     setSaved(false);
   };
 
-  const handleSave = (nextConfig = config, nextLayout = certificateLayout) => {
+  const handleSave = async (nextConfig = config, nextLayout = certificateLayout) => {
     const configToSave = mergeCertificateConfig(nextConfig);
+    setSaving(true);
     localStorage.setItem('drmCertConfig', JSON.stringify(configToSave));
     saveCertificateLayout(nextLayout);
     setConfig(configToSave);
     setCertificateLayout(nextLayout);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      await api.updateCertificateSettings({ config: configToSave, layout: nextLayout });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const field = (key, label, type = 'text', placeholder = '') => (
@@ -225,11 +258,11 @@ export default function ConfiguracoesPage() {
           <Eye className="w-4 h-4" />
           Pré-visualizar Certificado
         </button>
-        <button onClick={() => handleSave()} className="btn-primary">
+        <button onClick={() => handleSave()} disabled={saving} className="btn-primary disabled:opacity-60">
           {saved ? (
             <><CheckCircle className="w-4 h-4" />Salvo!</>
           ) : (
-            <><Save className="w-4 h-4" />Salvar Configurações</>
+            <><Save className="w-4 h-4" />{saving ? 'Salvando...' : 'Salvar Configurações'}</>
           )}
         </button>
       </div>

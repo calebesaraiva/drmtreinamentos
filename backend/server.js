@@ -65,6 +65,7 @@ function fallbackData() {
     return {
       students: [],
       courses: [],
+      certificateSettings: {},
     };
   }
 
@@ -72,6 +73,7 @@ function fallbackData() {
     return {
       students: structuredClone(MOCK_STUDENTS),
       courses: structuredClone(MOCK_COURSES),
+      certificateSettings: {},
     };
   }
 
@@ -80,11 +82,13 @@ function fallbackData() {
     return {
       students: Array.isArray(parsed.students) ? parsed.students : structuredClone(MOCK_STUDENTS),
       courses: Array.isArray(parsed.courses) ? parsed.courses : structuredClone(MOCK_COURSES),
+      certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
     };
   } catch {
     return {
       students: structuredClone(MOCK_STUDENTS),
       courses: structuredClone(MOCK_COURSES),
+      certificateSettings: {},
     };
   }
 }
@@ -110,6 +114,9 @@ async function loadData() {
     return {
       students: Array.isArray(existing.rows[0].data.students) ? existing.rows[0].data.students : localData.students,
       courses: Array.isArray(existing.rows[0].data.courses) ? existing.rows[0].data.courses : localData.courses,
+      certificateSettings: existing.rows[0].data.certificateSettings && typeof existing.rows[0].data.certificateSettings === 'object'
+        ? existing.rows[0].data.certificateSettings
+        : {},
     };
   }
 
@@ -125,9 +132,10 @@ async function loadData() {
 const initialData = await loadData();
 let students = initialData.students;
 let courses = initialData.courses;
+let certificateSettings = initialData.certificateSettings || {};
 
 function persistData() {
-  const payload = { students, courses };
+  const payload = { students, courses, certificateSettings };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -141,6 +149,16 @@ function persistData() {
   ).catch(error => {
     console.error('Erro ao persistir no PostgreSQL:', error);
   });
+}
+
+function updateCertificateSettings(payload) {
+  certificateSettings = {
+    config: payload.config && typeof payload.config === 'object' ? payload.config : certificateSettings.config || {},
+    layout: payload.layout && typeof payload.layout === 'object' ? payload.layout : certificateSettings.layout || {},
+    updatedAt: new Date().toISOString(),
+  };
+  persistData();
+  return certificateSettings;
 }
 
 const allowedStatusFields = new Set(['statusCadastro', 'statusCertificado']);
@@ -909,6 +927,21 @@ const server = createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/courses') {
     sendJson(res, 200, courses.map(normalizeCourse));
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/settings/certificate') {
+    sendJson(res, 200, certificateSettings || {});
+    return;
+  }
+
+  if (req.method === 'PATCH' && url.pathname === '/api/settings/certificate') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    sendJson(res, 200, updateCertificateSettings(body));
     return;
   }
 

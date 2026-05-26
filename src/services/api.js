@@ -32,6 +32,11 @@ export const api = {
   getDashboard: () => request('/api/dashboard'),
   getStudents: () => request('/api/students'),
   getCourses: () => request('/api/courses'),
+  getCertificateSettings: () => request('/api/settings/certificate'),
+  updateCertificateSettings: (payload) => request('/api/settings/certificate', {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
   getPublicCourses: () => request('/api/public/courses'),
   verifyCourseCode: (courseId, codigo) => request(`/api/public/courses/${courseId}/verify`, {
     method: 'POST',

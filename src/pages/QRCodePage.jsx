@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { QrCode, Plus, Download, Copy, Check, MapPin, Clock, Timer, Users, Calendar, Building2, Edit3, Award, UserCheck } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Modal from '../components/Modal';
@@ -6,6 +6,7 @@ import { useApp } from '../context/AppContext';
 import CertificateDesigner, { getStoredCertificateLayout, saveCertificateLayout } from '../components/CertificateDesigner';
 import { defaultCertificateConfig, mergeCertificateConfig } from '../data/certificateDefaults';
 import BrandLogo from '../components/BrandLogo';
+import { api } from '../services/api';
 
 const initialForm = {
   nomeCurso: '',
@@ -166,6 +167,31 @@ export default function QRCodePage() {
     catch { return defaultCertificateConfig; }
   });
 
+  useEffect(() => {
+    let ignore = false;
+    async function loadCertificateSettings() {
+      try {
+        const settings = await api.getCertificateSettings();
+        if (ignore) return;
+        if (settings?.config) {
+          const nextConfig = mergeCertificateConfig(settings.config);
+          setCertificateConfig(nextConfig);
+          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
+        }
+        if (settings?.layout) {
+          setCertificateLayout(settings.layout);
+          saveCertificateLayout(settings.layout);
+        }
+      } catch {
+        // Usa a configuração local caso o servidor esteja indisponível.
+      }
+    }
+    loadCertificateSettings();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   const openCreate = () => {
     setEditingCourse(null);
     setForm({ ...initialForm });
@@ -260,11 +286,12 @@ export default function QRCodePage() {
     }
   };
 
-  const handleSaveCertificateLayout = (nextConfig = certificateConfig, nextLayout = certificateLayout) => {
+  const handleSaveCertificateLayout = async (nextConfig = certificateConfig, nextLayout = certificateLayout) => {
     localStorage.setItem('drmCertConfig', JSON.stringify(mergeCertificateConfig(nextConfig)));
     saveCertificateLayout(nextLayout);
     setCertificateConfig(mergeCertificateConfig(nextConfig));
     setCertificateLayout(nextLayout);
+    await api.updateCertificateSettings({ config: mergeCertificateConfig(nextConfig), layout: nextLayout });
     setLayoutSaved(true);
     setTimeout(() => setLayoutSaved(false), 2500);
   };

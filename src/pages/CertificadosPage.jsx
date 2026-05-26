@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Send, CheckCircle, Mail, Users,
   Eye, AlertTriangle
@@ -8,6 +8,7 @@ import { useApp } from '../context/AppContext';
 import { CertificatePreview, getStoredCertificateLayout } from '../components/CertificateDesigner';
 import { defaultCertificateConfig, mergeCertificateConfig } from '../data/certificateDefaults';
 import BrandLogo from '../components/BrandLogo';
+import { api } from '../services/api';
 
 function CertBadge({ enviado }) {
   return enviado
@@ -26,9 +27,8 @@ function formatDateTime(dateTime) {
   });
 }
 
-function PreviewModal({ aluno, courses, config, isOpen, onClose }) {
+function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
   if (!aluno) return null;
-  const layout = getStoredCertificateLayout();
   const course = courses.find(item => String(item.id) === String(aluno.cursoId));
   const temInstrutor = aluno.temInstrutor !== undefined
     ? aluno.temInstrutor !== false
@@ -73,12 +73,33 @@ export default function CertificadosPage() {
   const [preview, setPreview] = useState(null);
   const [confirmAll, setConfirmAll] = useState(false);
   const [filter, setFilter] = useState('todos');
-
-  // Load cert config from localStorage
-  const config = (() => {
+  const [layout, setLayout] = useState(() => getStoredCertificateLayout());
+  const [config, setConfig] = useState(() => {
     try { return mergeCertificateConfig(JSON.parse(localStorage.getItem('drmCertConfig') || '{}')); }
     catch { return defaultCertificateConfig; }
-  })();
+  });
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadCertificateSettings() {
+      try {
+        const settings = await api.getCertificateSettings();
+        if (ignore) return;
+        if (settings?.config) {
+          const nextConfig = mergeCertificateConfig(settings.config);
+          setConfig(nextConfig);
+          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
+        }
+        if (settings?.layout) setLayout(settings.layout);
+      } catch {
+        // Usa a configuração local caso o servidor esteja indisponível.
+      }
+    }
+    loadCertificateSettings();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const aprovados = students.filter(s => s.statusCertificado === 'aprovado');
   const enviados = aprovados.filter(s => s.certificadoEnviado);
@@ -250,6 +271,7 @@ export default function CertificadosPage() {
         aluno={preview}
         courses={courses}
         config={config}
+        layout={layout}
         isOpen={!!preview}
         onClose={() => setPreview(null)}
       />
