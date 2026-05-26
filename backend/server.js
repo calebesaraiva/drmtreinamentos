@@ -10,6 +10,12 @@ import {
   MOCK_COURSES,
   CHART_DATA_MONTHLY,
 } from '../src/data/mockData.js';
+import {
+  defaultCertificateConfig,
+  defaultCertificateLayout,
+  mergeCertificateConfig,
+  sampleCertificateStudent,
+} from '../src/data/certificateDefaults.js';
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -17,6 +23,8 @@ const HOST = process.env.HOST || '127.0.0.1';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = process.env.DATA_FILE || join(__dirname, 'data.json');
 const LOGO_FILE = join(__dirname, '..', 'public', 'brand', 'drm-certi-sem-fundo.png');
+const CERTIFICATE_PAGE_WIDTH = 1123;
+const CERTIFICATE_PAGE_HEIGHT = 794;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL || 'https://drmtreinamentos.com';
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -422,12 +430,303 @@ function certificateTopics(student = {}) {
   ];
 }
 
+function mergeCertificateLayoutPdf(layout = {}) {
+  const mergedFields = {
+    ...defaultCertificateLayout.fields,
+    ...(layout.fields || {}),
+  };
+
+  mergedFields.localCursoTopo = {
+    ...defaultCertificateLayout.fields.localCursoTopo,
+    visible: layout.fields?.localCursoTopo?.visible ?? defaultCertificateLayout.fields.localCursoTopo.visible,
+  };
+
+  const highestFieldPage = Object.values(mergedFields).reduce(
+    (highest, field) => Math.max(highest, Number(field.page) || 1),
+    1,
+  );
+
+  return {
+    ...defaultCertificateLayout,
+    ...layout,
+    pages: Math.max(defaultCertificateLayout.pages, Number(layout.pages) || 0, highestFieldPage),
+    fields: mergedFields,
+  };
+}
+
+function formatLongDateBR(date) {
+  if (!date) return '-- de -------- de ----';
+  return new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function renderCertificateTemplate(template, values) {
+  return Object.entries(values).reduce(
+    (text, [key, value]) => text.replaceAll(`{${key}}`, value ?? ''),
+    template || '',
+  );
+}
+
+function extractCertificateNorm(curso = '') {
+  const match = String(curso).match(/\bNR[-\s]?(\d{1,2})\b/i);
+  return match ? `NR\n${match[1]}` : 'NR';
+}
+
+function certificatePdfValues(config = {}, student = {}) {
+  const cfg = mergeCertificateConfig(config);
+  const data = { ...sampleCertificateStudent, ...student };
+  const temInstrutor = data.temInstrutor !== false;
+  const instrutorNome = temInstrutor ? data.instrutorNome || data.nomeInstrutor || data.instrutor || 'Instrutor não informado' : '';
+  const instrutorCargo = temInstrutor ? data.instrutorCargo || data.cargoInstrutor || data.instrutorFuncao || 'Técnico/Engenheiro responsável' : '';
+  const instrutorRegistro = temInstrutor ? data.instrutorRegistro || data.registroInstrutor || data.creaInstrutor || data.cftInstrutor || 'CREA/CFT não informado' : '';
+  const periodoInicio = formatDateBR(data.periodoInicio || data.data);
+  const periodoFim = formatDateBR(data.periodoFim || data.data);
+  const templateValues = {
+    nome: data.nome,
+    cpf: data.cpf || '000.000.000-00',
+    curso: data.nomeCurso,
+    instrutor: instrutorNome,
+    instrutorNome,
+    instrutorCargo,
+    instrutorRegistro,
+    duracao: data.duracao || '8 horas',
+    local: data.local || 'local definido',
+    cidade: data.local || cfg.endereco,
+    data: formatDateBR(data.data),
+    dataExtenso: formatLongDateBR(data.data),
+    hora: data.horarioInicio ? `, às ${data.horarioInicio}` : '',
+    periodo: periodoInicio === periodoFim ? periodoFim : `${periodoInicio} a ${periodoFim}`,
+    norma: extractCertificateNorm(data.nomeCurso),
+    validadeAnos: cfg.validadeAnos || '2',
+    cnpj: cfg.cnpj,
+    responsavel: data.certificadoAutorizadoPor || cfg.nomeResponsavel,
+    localAssinatura: data.certificadoAssinaturaLocal || cfg.assinaturaDigitalLocal || cfg.endereco,
+    assinaturaDataHora: formatDateTimeBR(data.certificadoAutorizadoEm || cfg.assinaturaDigitalAutorizadaEm),
+    assinaturaCodigo: data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
+  };
+
+  const defaultTopics = certificateTopics(data).map((topic, index) => `${index + 1}. ${topic};`).join('\n');
+
+  return {
+    marca: 'DRM',
+    nomeEmpresa: cfg.nomeEmpresa,
+    cnpjEmpresaTopo: renderCertificateTemplate(cfg.cnpjModelo, templateValues),
+    localCursoTopo: data.local || cfg.endereco,
+    nrBadge: renderCertificateTemplate(cfg.normaBadge, templateValues),
+    nrBadgeConteudo: renderCertificateTemplate(cfg.normaBadge, templateValues),
+    titulo: cfg.tituloCertificado,
+    textoCertificado: renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
+    dataLocal: renderCertificateTemplate(cfg.detalhesCursoModelo, templateValues),
+    assinaturaResponsavel: cfg.nomeResponsavel,
+    assinaturaValidade: renderCertificateTemplate(cfg.assinaturaValidacaoModelo, templateValues),
+    cargoResponsavel: cfg.cargoResponsavel,
+    creaResponsavel: cfg.creaResponsavel,
+    instrutorNome,
+    instrutorCargo,
+    instrutorRegistro,
+    instrutorTipo: cfg.instrutorRotulo,
+    participanteNome: data.nome,
+    participanteCpf: `CPF ${data.cpf || '000.000.000-00'}`,
+    participanteTipo: cfg.registroParticipante,
+    marcaCentral: cfg.assinaturaEmpresaTexto,
+    conteudoTitulo: cfg.conteudoTitulo,
+    conteudoSubtitulo: renderCertificateTemplate(cfg.conteudoSubtitulo, templateValues),
+    conteudoProgramatico: cfg.conteudoProgramatico || defaultTopics,
+    rodape: cfg.textoRodape,
+  };
+}
+
+function pdfFieldColor(field, config) {
+  if (field.color === 'primary') return config.corPrimaria;
+  if (field.color === 'secondary') return config.corSecundaria;
+  if (field.color === 'accent') return config.corAcento || config.corSecundaria;
+  if (field.color === 'muted') return config.corAcento || '#64748B';
+  return '#1E1E24';
+}
+
+function fieldRect(doc, field) {
+  return {
+    x: (field.x / 100) * doc.page.width,
+    y: (field.y / 100) * doc.page.height,
+    w: (field.w / 100) * doc.page.width,
+    h: (field.h / 100) * doc.page.height,
+  };
+}
+
+function dataUrlToBuffer(value = '') {
+  const match = String(value).match(/^data:image\/[a-z0-9.+-]+;base64,(.+)$/i);
+  return match ? Buffer.from(match[1], 'base64') : null;
+}
+
+function configuredImageSource(src) {
+  if (!src) return null;
+  const dataImage = dataUrlToBuffer(src);
+  if (dataImage) return dataImage;
+  if (src === defaultCertificateConfig.logoAssetPath || src === '/brand/drm-certi-sem-fundo.png') {
+    return existsSync(LOGO_FILE) ? LOGO_FILE : null;
+  }
+  return null;
+}
+
+function drawCertificateDecor(doc, page, cfg) {
+  const width = doc.page.width;
+  const height = doc.page.height;
+  const primary = cfg.corPrimaria || '#F97316';
+  const secondary = cfg.corSecundaria || '#DC2626';
+  const accent = cfg.corAcento || '#3F3F46';
+  const headerTop = page === 2 ? 0.232 * height : 0.202 * height;
+
+  doc.save();
+  doc.rect(0, 0, width, height).fill('#ffffff');
+  doc.opacity(page === 2 ? 0.16 : 0.18).polygon(
+    [0.14 * width, 0],
+    [0.38 * width, 0],
+    [0.18 * width, height],
+    [0, height],
+    [0, 0.36 * height],
+  ).fill(primary);
+  doc.opacity(page === 2 ? 0.07 : 0.09).polygon(
+    [0.82 * width, 0],
+    [width, 0],
+    [width, 0.34 * height],
+    [0.68 * width, 0.14 * height],
+  ).fill(secondary);
+  doc.opacity(0.16).polygon(
+    [0, 0.84 * height],
+    [0.22 * width, height],
+    [0, height],
+  ).fill(primary);
+  doc.restore();
+
+  doc.rect(0.02 * width, 0.02 * height, 0.96 * width, 0.96 * height).lineWidth(2).stroke(primary);
+  doc.rect(0.025 * width, 0.025 * height, 0.95 * width, 0.95 * height).lineWidth(1).stroke('#ffffff');
+  doc.rect(0.03 * width, 0.03 * height, 0.94 * width, 0.94 * height).lineWidth(1).stroke('#fed7aa');
+  doc.rect(0.02 * width, 0.02 * height, 0.46 * width, 0.01 * height).fill(primary);
+  doc.rect(0.34 * width, 0.02 * height, 0.14 * width, 0.01 * height).fill(secondary);
+  doc.rect(0.77 * width, 0.02 * height, 0.21 * width, 0.01 * height).fill(primary);
+  doc.moveTo(0.02 * width, headerTop).lineTo(0.98 * width, headerTop).dash(3, { space: 3 }).lineWidth(0.8).stroke(primary).undash();
+  doc.save();
+  doc.opacity(0.12);
+  doc.rect(0.02 * width, page === 2 ? 0.24 * height : 0.21 * height, 0.96 * width, 0.112 * height).fill(primary);
+  doc.restore();
+  doc.rect(0.03 * width, 0.946 * height, 0.34 * width, 0.02 * height).fill('#fed7aa');
+  doc.rect(0.41 * width, 0.966 * height, 0.18 * width, 0.01 * height).fill(secondary);
+  doc.rect(0.41 * width, 0.966 * height, 0.09 * width, 0.01 * height).fill(primary);
+  doc.rect(0.63 * width, 0.946 * height, 0.34 * width, 0.02 * height).fill('#fed7aa');
+  doc.strokeColor(accent);
+}
+
+function drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale) {
+  const primary = cfg.corPrimaria || '#F97316';
+  const secondary = cfg.corSecundaria || '#DC2626';
+  const accent = cfg.corAcento || '#3F3F46';
+  const logoSource = configuredImageSource(cfg.logoAssetPath || cfg.logoUrl);
+
+  if (field.kind === 'brand' || field.kind === 'centerBrand') {
+    if (logoSource) {
+      doc.image(logoSource, rect.x, rect.y, { fit: [rect.w, rect.h], align: field.kind === 'brand' ? 'left' : 'center', valign: 'center' });
+    } else {
+      doc.font('Helvetica-BoldOblique').fontSize((field.kind === 'brand' ? field.fontSize * 2.3 : field.fontSize) * scale).fillColor(primary).text('DRM', rect.x, rect.y, {
+        width: rect.w,
+        height: rect.h,
+        align: field.align || 'center',
+        valign: 'center',
+      });
+    }
+    return;
+  }
+
+  if (field.kind === 'digitalSignature') {
+    const signature = configuredImageSource(cfg.assinaturaDigitalUrl);
+    if (signature) {
+      doc.image(signature, rect.x, rect.y, { fit: [rect.w, rect.h], align: 'center', valign: 'center' });
+      return;
+    }
+    doc.roundedRect(rect.x, rect.y, rect.w, rect.h, 4).dash(3, { space: 3 }).lineWidth(0.8).stroke(primary).undash();
+    doc.font('Helvetica-Bold').fontSize(field.fontSize * scale).fillColor(primary).text('DRM', rect.x, rect.y + rect.h * 0.26, {
+      width: rect.w,
+      align: 'center',
+    });
+    doc.font('Helvetica-Bold').fontSize(Math.max(6, field.fontSize * 0.55 * scale)).text('assinatura digital', rect.x, rect.y + rect.h * 0.56, {
+      width: rect.w,
+      align: 'center',
+    });
+    return;
+  }
+
+  if (field.kind === 'nrBadge') {
+    doc.save();
+    doc.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+    doc.rotate(45);
+    doc.roundedRect(-rect.w / 2, -rect.h / 2, rect.w, rect.h, rect.w * 0.16).lineWidth(1.4).stroke(primary);
+    doc.roundedRect(-rect.w / 2 + 3, -rect.h / 2 + 3, rect.w - 6, rect.h - 6, rect.w * 0.14).lineWidth(0.8).stroke(secondary);
+    doc.rotate(-45);
+    doc.font('Helvetica-Bold').fontSize(field.fontSize * scale).fillColor(primary).text(values[id], -rect.w / 2, -field.fontSize * scale, {
+      width: rect.w,
+      align: 'center',
+      lineGap: 0,
+    });
+    doc.restore();
+    return;
+  }
+
+  if (field.kind === 'locationText') {
+    doc.rect(rect.x, rect.y, rect.w, rect.h).lineWidth(1.4).stroke(primary);
+    doc.font('Helvetica-Bold').fontSize(field.fontSize * scale).fillColor(primary).text(`LOCAL DO CURSO - ${values[id]}`, rect.x, rect.y + rect.h * 0.28, {
+      width: rect.w,
+      align: 'center',
+      characterSpacing: 0.25 * scale,
+    });
+    return;
+  }
+
+  if (field.kind === 'seal') {
+    const size = Math.min(rect.w, rect.h) * 0.72;
+    doc.circle(rect.x + rect.w / 2, rect.y + rect.h / 2, size / 2).lineWidth(2.2).stroke(accent);
+    doc.circle(rect.x + rect.w / 2, rect.y + rect.h / 2, size / 2 - 3).lineWidth(0.8).stroke(secondary);
+  }
+}
+
+function drawCertificateField(doc, id, field, cfg, values, scale) {
+  if (!field.visible) return;
+  const rect = fieldRect(doc, field);
+  const fontSize = Math.max(field.fontSize || 9.2, 9.2) * scale;
+
+  if (field.kind) {
+    drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale);
+    return;
+  }
+
+  const fontFamily = field.serif ? 'Times' : 'Helvetica';
+  const bold = Number.parseInt(field.weight || 400, 10) >= 700;
+  const italic = Boolean(field.italic);
+  const font = field.serif
+    ? (bold ? 'Times-Bold' : italic ? 'Times-Italic' : 'Times-Roman')
+    : (bold ? 'Helvetica-Bold' : italic ? 'Helvetica-Oblique' : 'Helvetica');
+
+  if (field.line) {
+    doc.rect(rect.x, rect.y, rect.w, Math.max(0.8, 1.4 * scale)).fill(cfg.corPrimaria || '#F97316');
+  }
+
+  doc.font(font).fontSize(fontSize).fillColor(pdfFieldColor(field, cfg));
+  doc.text(values[id] || '', rect.x, rect.y + (field.line ? 5 * scale : 0), {
+    width: rect.w,
+    height: rect.h,
+    align: field.align || 'left',
+    lineGap: Math.max(0, fontSize * ((field.lineHeight || 1.18) - 1)),
+    characterSpacing: field.letterSpacing ? field.letterSpacing * scale : 0,
+  });
+}
+
 function generateCertificatePdf(student) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
       layout: 'landscape',
-      margin: 36,
+      margin: 0,
       info: {
         Title: `Certificado - ${student.nome || 'Aluno'}`,
         Author: 'DRM Treinamentos e Certificações',
@@ -439,96 +738,22 @@ function generateCertificatePdf(student) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const primary = '#f97316';
-    const secondary = '#dc2626';
-    const text = '#111827';
-    const muted = '#4b5563';
-    const width = doc.page.width;
-    const height = doc.page.height;
-    const code = student.certificadoAssinaturaCodigo || 'DRM-CERT';
-    const validationUrl = `${PUBLIC_APP_URL.replace(/\/$/, '')}/validar-certificado`;
+    const cfg = mergeCertificateConfig(certificateSettings.config || {});
+    const layout = mergeCertificateLayoutPdf(certificateSettings.layout || {});
+    const values = certificatePdfValues(cfg, student);
+    const showInstructor = student?.temInstrutor !== false;
+    const instructorFields = new Set(['instrutorNome', 'instrutorCargo', 'instrutorRegistro', 'instrutorTipo']);
+    const scale = doc.page.width / CERTIFICATE_PAGE_WIDTH;
+    const pages = Array.from({ length: layout.pages || 1 }, (_, index) => index + 1);
 
-    function drawFrame(title) {
-      doc.rect(28, 28, width - 56, height - 56).lineWidth(2).stroke(primary);
-      doc.rect(38, 38, width - 76, height - 76).lineWidth(0.7).stroke('#fdba74');
-      doc.moveTo(42, 66).lineTo(width - 42, 66).lineWidth(4).stroke(primary);
-      doc.moveTo(width - 210, 66).lineTo(width - 42, 66).lineWidth(4).stroke(secondary);
-      if (existsSync(LOGO_FILE)) {
-        doc.image(LOGO_FILE, 58, 78, { width: 92 });
-      } else {
-        doc.font('Helvetica-Bold').fontSize(26).fillColor(secondary).text('DRM', 58, 84);
-      }
-      doc.font('Helvetica-Bold').fontSize(11).fillColor(primary).text('DRM TREINAMENTOS E CONSULTORIA', 0, 78, {
-        align: 'center',
+    pages.forEach((page, index) => {
+      if (index > 0) doc.addPage({ size: 'A4', layout: 'landscape', margin: 0 });
+      drawCertificateDecor(doc, page, cfg);
+      Object.entries(layout.fields).forEach(([id, field]) => {
+        if ((field.page || 1) !== page) return;
+        if (!showInstructor && instructorFields.has(id)) return;
+        drawCertificateField(doc, id, field, cfg, values, scale);
       });
-      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('CNPJ 48.518.202/0001-56', 0, 98, {
-        align: 'center',
-      });
-      doc.roundedRect(width - 112, 78, 54, 54, 12).lineWidth(1.5).stroke(primary);
-      doc.font('Helvetica-Bold').fontSize(10).fillColor(primary).text(detectCourseNorm(student.nomeCurso).replace('NR', 'NR '), width - 108, 95, {
-        width: 46,
-        align: 'center',
-      });
-      doc.font('Helvetica-Bold').fontSize(28).fillColor(primary).text(title, 0, 136, {
-        align: 'center',
-      });
-    }
-
-    drawFrame('CERTIFICADO');
-
-    doc.roundedRect(72, 190, width - 144, 110, 4).lineWidth(1.5).stroke(primary);
-    doc.font('Times-Bold').fontSize(17).fillColor(text).text(
-      `Certificamos que ${student.nome || 'Aluno'}, portador(a) do CPF ${student.cpf || '-'}, concluiu com aproveitamento satisfatório o treinamento ${student.nomeCurso || '-'}, com carga horária de ${student.duracao || '-'}, realizado em ${student.local || '-'}, em ${formatDateBR(student.data)}, em conformidade com os requisitos aplicáveis.`,
-      92,
-      218,
-      { width: width - 184, align: 'left', lineGap: 4 },
-    );
-
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(primary).text(`LOCAL DO CURSO - ${student.local || '-'}`, 0, 314, {
-      align: 'center',
-    });
-
-    doc.moveTo(96, 390).lineTo(286, 390).lineWidth(1).stroke(primary);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(text).text('Responsável Técnico DRM', 96, 400, { width: 190 });
-    doc.font('Helvetica').fontSize(8).fillColor(muted).text('Assinatura digital autorizada', 96, 416, { width: 190 });
-
-    doc.moveTo(width - 286, 390).lineTo(width - 96, 390).lineWidth(1).stroke(primary);
-    doc.font('Helvetica-Bold').fontSize(10).fillColor(text).text(student.nome || 'Aluno', width - 286, 400, { width: 190, align: 'right' });
-    doc.font('Helvetica').fontSize(8).fillColor(muted).text('Participante', width - 286, 416, { width: 190, align: 'right' });
-
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text(
-      `Autorizado por ${student.certificadoAutorizadoPor || 'Responsável DRM'} em ${formatDateTimeBR(student.certificadoAutorizadoEm)}. Código de validação: ${code}.`,
-      70,
-      height - 86,
-      { width: width - 140, align: 'center' },
-    );
-    doc.font('Helvetica').fontSize(8).fillColor(muted).text(`Validação pública: ${validationUrl}`, 70, height - 66, {
-      width: width - 140,
-      align: 'center',
-    });
-
-    doc.addPage({ size: 'A4', layout: 'landscape', margin: 36 });
-    drawFrame('CONTEÚDO PROGRAMÁTICO');
-    doc.font('Helvetica-Bold').fontSize(15).fillColor(text).text(student.nomeCurso || 'Curso', 70, 180, {
-      width: width - 140,
-      align: 'center',
-    });
-    const topics = certificateTopics(student);
-    let y = 238;
-    doc.font('Helvetica').fontSize(13).fillColor(text);
-    topics.forEach((topic, index) => {
-      doc.text(`${index + 1}. ${topic};`, 118, y, { width: width - 236, lineGap: 2 });
-      y += 23;
-      if (y > height - 110) {
-        doc.addPage({ size: 'A4', layout: 'landscape', margin: 36 });
-        drawFrame('CONTEÚDO PROGRAMÁTICO');
-        y = 170;
-        doc.font('Helvetica').fontSize(13).fillColor(text);
-      }
-    });
-    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text(`Código de validação: ${code}`, 70, height - 68, {
-      width: width - 140,
-      align: 'center',
     });
 
     doc.end();
