@@ -153,8 +153,9 @@ Quando um certificado é liberado ou enviado pela central de certificados, o alu
 - nome do curso;
 - código de validação;
 - link para validação pública.
+- certificado oficial anexado em PDF.
 
-Observação: o envio automático atual envia a liberação e o código de validação por e-mail. O PDF pode ser gerado pela tela **Enviar Certificados**. Para anexar automaticamente o PDF ao e-mail, é necessário adicionar uma etapa de geração de PDF no servidor.
+O PDF anexado possui duas páginas: a primeira com o certificado assinado e a segunda com o conteúdo programático do treinamento. O aluno também pode validar a autenticidade pelo código público informado no e-mail.
 
 ## 5. Assinatura online e validação
 

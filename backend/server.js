@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import nodemailer from 'nodemailer';
+import PDFDocument from 'pdfkit';
 import {
   MOCK_STUDENTS,
   MOCK_COURSES,
@@ -15,6 +16,7 @@ const HOST = process.env.HOST || '127.0.0.1';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_FILE = process.env.DATA_FILE || join(__dirname, 'data.json');
+const LOGO_FILE = join(__dirname, '..', 'public', 'brand', 'drm-certi-sem-fundo.png');
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL || 'https://drmtreinamentos.com';
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -385,32 +387,203 @@ function applyStudentStatus(student, field, value, motivo = null, actorName = 'R
   return updated;
 }
 
+function formatDateBR(date) {
+  if (!date) return '-';
+  return new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR');
+}
+
+function formatDateTimeBR(dateTime) {
+  if (!dateTime) return '-';
+  return new Date(dateTime).toLocaleString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function sanitizeFileName(value = 'certificado') {
+  return String(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9_-]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase() || 'certificado';
+}
+
+function certificateTopics(student = {}) {
+  const norm = detectCourseNorm(student.nomeCurso);
+  return COURSE_SCHEDULE_TEMPLATES[norm] || [
+    'Abertura do treinamento e orientações iniciais',
+    'Conteúdo técnico principal',
+    'Prática, dúvidas e revisão',
+    'Avaliação e encerramento',
+  ];
+}
+
+function generateCertificatePdf(student) {
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'landscape',
+      margin: 36,
+      info: {
+        Title: `Certificado - ${student.nome || 'Aluno'}`,
+        Author: 'DRM Treinamentos e Certificações',
+        Subject: student.nomeCurso || 'Certificado',
+      },
+    });
+    const chunks = [];
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
+
+    const primary = '#f97316';
+    const secondary = '#dc2626';
+    const text = '#111827';
+    const muted = '#4b5563';
+    const width = doc.page.width;
+    const height = doc.page.height;
+    const code = student.certificadoAssinaturaCodigo || 'DRM-CERT';
+    const validationUrl = `${PUBLIC_APP_URL.replace(/\/$/, '')}/validar-certificado`;
+
+    function drawFrame(title) {
+      doc.rect(28, 28, width - 56, height - 56).lineWidth(2).stroke(primary);
+      doc.rect(38, 38, width - 76, height - 76).lineWidth(0.7).stroke('#fdba74');
+      doc.moveTo(42, 66).lineTo(width - 42, 66).lineWidth(4).stroke(primary);
+      doc.moveTo(width - 210, 66).lineTo(width - 42, 66).lineWidth(4).stroke(secondary);
+      if (existsSync(LOGO_FILE)) {
+        doc.image(LOGO_FILE, 58, 78, { width: 92 });
+      } else {
+        doc.font('Helvetica-Bold').fontSize(26).fillColor(secondary).text('DRM', 58, 84);
+      }
+      doc.font('Helvetica-Bold').fontSize(11).fillColor(primary).text('DRM TREINAMENTOS E CONSULTORIA', 0, 78, {
+        align: 'center',
+      });
+      doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text('CNPJ 48.518.202/0001-56', 0, 98, {
+        align: 'center',
+      });
+      doc.roundedRect(width - 112, 78, 54, 54, 12).lineWidth(1.5).stroke(primary);
+      doc.font('Helvetica-Bold').fontSize(10).fillColor(primary).text(detectCourseNorm(student.nomeCurso).replace('NR', 'NR '), width - 108, 95, {
+        width: 46,
+        align: 'center',
+      });
+      doc.font('Helvetica-Bold').fontSize(28).fillColor(primary).text(title, 0, 136, {
+        align: 'center',
+      });
+    }
+
+    drawFrame('CERTIFICADO');
+
+    doc.roundedRect(72, 190, width - 144, 110, 4).lineWidth(1.5).stroke(primary);
+    doc.font('Times-Bold').fontSize(17).fillColor(text).text(
+      `Certificamos que ${student.nome || 'Aluno'}, portador(a) do CPF ${student.cpf || '-'}, concluiu com aproveitamento satisfatório o treinamento ${student.nomeCurso || '-'}, com carga horária de ${student.duracao || '-'}, realizado em ${student.local || '-'}, em ${formatDateBR(student.data)}, em conformidade com os requisitos aplicáveis.`,
+      92,
+      218,
+      { width: width - 184, align: 'left', lineGap: 4 },
+    );
+
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(primary).text(`LOCAL DO CURSO - ${student.local || '-'}`, 0, 314, {
+      align: 'center',
+    });
+
+    doc.moveTo(96, 390).lineTo(286, 390).lineWidth(1).stroke(primary);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(text).text('Responsável Técnico DRM', 96, 400, { width: 190 });
+    doc.font('Helvetica').fontSize(8).fillColor(muted).text('Assinatura digital autorizada', 96, 416, { width: 190 });
+
+    doc.moveTo(width - 286, 390).lineTo(width - 96, 390).lineWidth(1).stroke(primary);
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(text).text(student.nome || 'Aluno', width - 286, 400, { width: 190, align: 'right' });
+    doc.font('Helvetica').fontSize(8).fillColor(muted).text('Participante', width - 286, 416, { width: 190, align: 'right' });
+
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text(
+      `Autorizado por ${student.certificadoAutorizadoPor || 'Responsável DRM'} em ${formatDateTimeBR(student.certificadoAutorizadoEm)}. Código de validação: ${code}.`,
+      70,
+      height - 86,
+      { width: width - 140, align: 'center' },
+    );
+    doc.font('Helvetica').fontSize(8).fillColor(muted).text(`Validação pública: ${validationUrl}`, 70, height - 66, {
+      width: width - 140,
+      align: 'center',
+    });
+
+    doc.addPage({ size: 'A4', layout: 'landscape', margin: 36 });
+    drawFrame('CONTEÚDO PROGRAMÁTICO');
+    doc.font('Helvetica-Bold').fontSize(15).fillColor(text).text(student.nomeCurso || 'Curso', 70, 180, {
+      width: width - 140,
+      align: 'center',
+    });
+    const topics = certificateTopics(student);
+    let y = 238;
+    doc.font('Helvetica').fontSize(13).fillColor(text);
+    topics.forEach((topic, index) => {
+      doc.text(`${index + 1}. ${topic};`, 118, y, { width: width - 236, lineGap: 2 });
+      y += 23;
+      if (y > height - 110) {
+        doc.addPage({ size: 'A4', layout: 'landscape', margin: 36 });
+        drawFrame('CONTEÚDO PROGRAMÁTICO');
+        y = 170;
+        doc.font('Helvetica').fontSize(13).fillColor(text);
+      }
+    });
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(muted).text(`Código de validação: ${code}`, 70, height - 68, {
+      width: width - 140,
+      align: 'center',
+    });
+
+    doc.end();
+  });
+}
+
 function buildCertificateEmail(student) {
   const validationUrl = `${PUBLIC_APP_URL.replace(/\/$/, '')}/validar-certificado`;
   const certificateCode = student.certificadoAssinaturaCodigo || '';
+  const courseName = student.nomeCurso || 'treinamento DRM';
 
   return {
-    subject: `Certificado liberado - ${student.nomeCurso || 'DRM Treinamentos'}`,
+    subject: `Seu certificado DRM está pronto - ${courseName}`,
     text: [
       `Olá, ${student.nome}.`,
       '',
-      `Seu certificado do curso ${student.nomeCurso} foi liberado pela DRM Treinamentos.`,
+      `Parabéns pela conclusão do curso ${courseName}.`,
+      'Seu certificado oficial DRM Treinamentos e Certificações está anexado a este e-mail em PDF.',
       `Código de validação: ${certificateCode}`,
-      `Valide em: ${validationUrl}`,
+      `Validação pública: ${validationUrl}`,
       '',
       'Atenciosamente,',
       'DRM Treinamentos e Certificações',
     ].join('\n'),
     html: `
-      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#1f2937">
-        <h2 style="color:#f97316;margin:0 0 12px">Certificado liberado</h2>
-        <p>Olá, <strong>${student.nome}</strong>.</p>
-        <p>Seu certificado do curso <strong>${student.nomeCurso}</strong> foi liberado pela DRM Treinamentos.</p>
-        <p><strong>Código de validação:</strong></p>
-        <p style="font-family:monospace;background:#f3f4f6;padding:12px;border-radius:8px">${certificateCode}</p>
-        <p>Para validar a autenticidade, acesse:</p>
-        <p><a href="${validationUrl}" style="color:#f97316">${validationUrl}</a></p>
-        <p style="margin-top:24px">Atenciosamente,<br><strong>DRM Treinamentos e Certificações</strong></p>
+      <div style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,sans-serif;color:#1f2937">
+        <div style="max-width:640px;margin:0 auto;padding:28px 16px">
+          <div style="background:linear-gradient(135deg,#111827,#f97316);border-radius:18px 18px 0 0;padding:28px;color:white">
+            <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#fed7aa">DRM Treinamentos e Certificações</p>
+            <h1 style="margin:0;font-size:26px;line-height:1.2">Seu certificado está pronto</h1>
+          </div>
+          <div style="background:white;border:1px solid #e5e7eb;border-top:0;border-radius:0 0 18px 18px;padding:28px">
+            <p style="font-size:16px;margin:0 0 16px">Olá, <strong>${student.nome}</strong>.</p>
+            <p style="font-size:15px;margin:0 0 16px">
+              Parabéns pela conclusão do curso <strong>${courseName}</strong>. Seu certificado oficial está anexado a este e-mail em PDF.
+            </p>
+            <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:16px;margin:20px 0">
+              <p style="margin:0 0 8px;font-size:13px;font-weight:bold;color:#9a3412">Código de validação</p>
+              <p style="margin:0;font-family:Consolas,monospace;font-size:16px;font-weight:bold;color:#111827">${certificateCode}</p>
+            </div>
+            <p style="font-size:14px;margin:0 0 16px;color:#4b5563">
+              A autenticidade do certificado pode ser conferida a qualquer momento pelo link abaixo:
+            </p>
+            <p style="margin:0 0 24px">
+              <a href="${validationUrl}" style="display:inline-block;background:#f97316;color:white;text-decoration:none;font-weight:bold;padding:12px 18px;border-radius:10px">
+                Validar certificado
+              </a>
+            </p>
+            <p style="font-size:13px;color:#6b7280;margin:0">
+              Guarde este e-mail e o PDF anexado. Ele comprova a emissão e permite a validação pública do certificado.
+            </p>
+            <hr style="border:0;border-top:1px solid #e5e7eb;margin:24px 0" />
+            <p style="font-size:14px;margin:0;color:#374151">Atenciosamente,<br><strong>DRM Treinamentos e Certificações</strong></p>
+          </div>
+        </div>
       </div>
     `,
   };
@@ -421,12 +594,21 @@ async function sendCertificateEmail(student) {
   if (!student.email) return { sent: false, error: 'Aluno sem e-mail cadastrado.' };
 
   const message = buildCertificateEmail(student);
+  const certificatePdf = await generateCertificatePdf(student);
+  const filename = `certificado-${sanitizeFileName(student.nome)}-${sanitizeFileName(student.nomeCurso)}.pdf`;
   await mailTransport.sendMail({
     from: SMTP_FROM,
     to: student.email,
     subject: message.subject,
     text: message.text,
     html: message.html,
+    attachments: [
+      {
+        filename,
+        content: certificatePdf,
+        contentType: 'application/pdf',
+      },
+    ],
   });
 
   return { sent: true };

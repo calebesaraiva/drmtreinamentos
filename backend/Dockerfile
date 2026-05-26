@@ -7,6 +7,7 @@ RUN npm ci --omit=dev
 
 COPY backend ./backend
 COPY src/data ./src/data
+COPY public ./public
 
 EXPOSE 3001
 
