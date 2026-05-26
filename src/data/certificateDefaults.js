@@ -1,4 +1,4 @@
-import { BRAND_LOGO_PATH } from './brand';
+import { BRAND_LOGO_PATH } from './brand.js';
 
 export const defaultCertificateConfig = {
   modeloVersao: 9,
