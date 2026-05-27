@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   '/chamada': 'Chamada',
   '/alunos': 'Alunos',
   '/cadastro-manual': 'Cadastro Manual',
+  '/nova-turma-manual': 'Nova turma manual',
   '/analise': 'Análise de Cadastros',
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',

@@ -105,6 +105,7 @@ function fallbackData() {
     return {
       students: [],
       courses: [],
+      classes: [],
       certificateSettings: {},
     };
   }
@@ -113,6 +114,7 @@ function fallbackData() {
     return {
       students: structuredClone(MOCK_STUDENTS),
       courses: structuredClone(MOCK_COURSES),
+      classes: [],
       certificateSettings: {},
     };
   }
@@ -122,12 +124,14 @@ function fallbackData() {
     return {
       students: Array.isArray(parsed.students) ? parsed.students : structuredClone(MOCK_STUDENTS),
       courses: Array.isArray(parsed.courses) ? parsed.courses : structuredClone(MOCK_COURSES),
+      classes: Array.isArray(parsed.classes) ? parsed.classes : [],
       certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
     };
   } catch {
     return {
       students: structuredClone(MOCK_STUDENTS),
       courses: structuredClone(MOCK_COURSES),
+      classes: [],
       certificateSettings: {},
     };
   }
@@ -154,6 +158,7 @@ async function loadData() {
     return {
       students: Array.isArray(existing.rows[0].data.students) ? existing.rows[0].data.students : localData.students,
       courses: Array.isArray(existing.rows[0].data.courses) ? existing.rows[0].data.courses : localData.courses,
+      classes: Array.isArray(existing.rows[0].data.classes) ? existing.rows[0].data.classes : localData.classes,
       certificateSettings: existing.rows[0].data.certificateSettings && typeof existing.rows[0].data.certificateSettings === 'object'
         ? existing.rows[0].data.certificateSettings
         : {},
@@ -172,10 +177,11 @@ async function loadData() {
 const initialData = await loadData();
 let students = initialData.students;
 let courses = initialData.courses;
+let classes = initialData.classes || [];
 let certificateSettings = initialData.certificateSettings || {};
 
 function persistData() {
-  const payload = { students, courses, certificateSettings };
+  const payload = { students, courses, classes, certificateSettings };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -1249,6 +1255,184 @@ async function createManualStudent(payload) {
   return { student };
 }
 
+function classChecklist(turma) {
+  const classStudents = students.filter(student => String(student.turmaId) === String(turma.id));
+  const hasStudents = classStudents.length > 0;
+  const analysisDone = hasStudents && classStudents.every(student => (
+    student.statusCadastro !== 'pendente' && student.statusCertificado !== 'pendente'
+  ));
+  const certificatesApproved = hasStudents && classStudents.some(student => student.statusCertificado === 'aprovado');
+  const emailsSent = certificatesApproved && classStudents
+    .filter(student => student.statusCertificado === 'aprovado')
+    .every(student => student.certificadoEnviado);
+
+  return [
+    { id: 'empresa', label: 'Empresa cadastrada', status: turma.empresa?.nome ? 'concluido' : 'erro' },
+    { id: 'curso', label: 'Curso definido', status: turma.cursoId ? 'concluido' : 'erro' },
+    { id: 'alunos', label: 'Alunos cadastrados', status: hasStudents ? 'concluido' : 'pendente' },
+    { id: 'analise', label: 'Análise concluída', status: analysisDone ? 'concluido' : hasStudents ? 'pendente' : 'bloqueado' },
+    { id: 'certificados', label: 'Certificados emitidos', status: certificatesApproved ? 'concluido' : analysisDone ? 'pendente' : 'bloqueado' },
+    { id: 'emails', label: 'E-mails enviados', status: emailsSent ? 'concluido' : certificatesApproved ? 'pendente' : 'bloqueado' },
+  ];
+}
+
+function enrichClass(turma) {
+  const classStudents = students.filter(student => String(student.turmaId) === String(turma.id));
+  return {
+    ...turma,
+    totalAlunos: classStudents.length,
+    alunosPendentes: classStudents.filter(student => student.statusCadastro === 'pendente' || student.statusCertificado === 'pendente').length,
+    alunosAprovados: classStudents.filter(student => student.statusCadastro === 'aprovado').length,
+    certificadosAprovados: classStudents.filter(student => student.statusCertificado === 'aprovado').length,
+    certificadosEnviados: classStudents.filter(student => student.certificadoEnviado).length,
+    checklist: classChecklist(turma),
+  };
+}
+
+function getClasses() {
+  return classes.map(enrichClass);
+}
+
+function createManualClass(payload) {
+  const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
+  if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
+
+  const empresa = payload.empresa || {};
+  if (!String(empresa.nome || '').trim()) return { status: 400, error: 'Empresa e obrigatoria.' };
+  const rows = Array.isArray(payload.alunos) ? payload.alunos : [];
+  if (rows.length === 0) return { status: 400, error: 'Informe ao menos um aluno.' };
+
+  const requiredStudent = ['nome', 'cpf', 'email', 'telefone', 'cargo'];
+  const invalidIndex = rows.findIndex(row => requiredStudent.some(field => !String(row[field] || '').trim()));
+  if (invalidIndex !== -1) return { status: 400, error: `Aluno ${invalidIndex + 1} possui campos obrigatorios vazios.` };
+
+  const cpfSet = new Set();
+  for (const row of rows) {
+    const cpf = String(row.cpf || '').replace(/\D/g, '');
+    if (cpfSet.has(cpf)) return { status: 409, error: `CPF duplicado na turma: ${row.cpf}.` };
+    cpfSet.add(cpf);
+    const duplicate = students.find(student => (
+      String(student.cursoId) === String(course.id) &&
+      String(student.cpf || '').replace(/\D/g, '') === cpf
+    ));
+    if (duplicate) return { status: 409, error: `CPF ja cadastrado para este curso: ${row.cpf}.` };
+  }
+
+  const actor = payload.actor || 'Responsável DRM';
+  const now = new Date().toISOString();
+  const nextClassId = classes.reduce((max, turma) => Math.max(max, Number(turma.id) || 0), 0) + 1;
+  const turma = {
+    id: nextClassId,
+    nome: payload.nome || `Turma ${course.nomeCurso} - ${empresa.nome}`,
+    empresa: {
+      nome: String(empresa.nome || '').trim(),
+      cnpj: String(empresa.cnpj || '').trim(),
+      contato: String(empresa.contato || '').trim(),
+      telefone: String(empresa.telefone || '').trim(),
+      email: String(empresa.email || '').trim(),
+    },
+    cursoId: course.id,
+    nomeCurso: course.nomeCurso,
+    cargaHoraria: course.duracao,
+    validade: payload.validade || certificateSettings.config?.validadeAnos || '',
+    modeloCertificado: payload.modeloCertificado || certificateSettings.config?.tituloCertificado || 'CERTIFICADO',
+    instrutorNome: payload.instrutorNome || course.instrutorNome || course.instrutor || '',
+    instrutorCargo: payload.instrutorCargo || course.instrutorCargo || '',
+    instrutorRegistro: payload.instrutorRegistro || course.instrutorRegistro || '',
+    local: payload.local || course.local,
+    data: payload.data || course.data,
+    horarioInicio: payload.horarioInicio || course.horarioInicio,
+    periodoInicio: payload.periodoInicio || payload.data || course.data,
+    periodoFim: payload.periodoFim || payload.data || course.data,
+    status: 'em_analise',
+    origem: 'turma-manual',
+    criadoEm: now,
+    criadoPor: actor,
+    historico: [
+      { tipo: 'criada', ator: actor, em: now, detalhe: `${rows.length} aluno(s) enviados para análise.` },
+    ],
+  };
+
+  const nextStudentStart = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
+  const newStudents = rows.map((row, index) => ({
+    id: nextStudentStart + index,
+    nome: String(row.nome).trim(),
+    cpf: String(row.cpf).trim(),
+    email: String(row.email).trim(),
+    telefone: String(row.telefone).trim(),
+    empresa: turma.empresa.nome,
+    cargo: String(row.cargo).trim(),
+    cursoId: course.id,
+    turmaId: turma.id,
+    turmaNome: turma.nome,
+    nomeCurso: course.nomeCurso,
+    local: turma.local,
+    data: turma.data,
+    horarioInicio: turma.horarioInicio,
+    duracao: course.duracao,
+    periodoInicio: turma.periodoInicio,
+    periodoFim: turma.periodoFim,
+    temInstrutor: course.temInstrutor,
+    instrutor: turma.instrutorNome,
+    instrutorNome: turma.instrutorNome,
+    instrutorCargo: turma.instrutorCargo,
+    instrutorRegistro: turma.instrutorRegistro,
+    statusCadastro: 'aprovado',
+    statusCertificado: 'pendente',
+    certificadoEnviado: false,
+    dataEnvio: null,
+    presente: true,
+    presenca: Number(row.presenca || 100),
+    notaProva: Number(row.notaProva || 10),
+    foto: null,
+    motivoRecusa: null,
+    origemCadastro: 'turma-manual',
+    inscritoEm: now,
+    chamadaRealizadaEm: now,
+    chamadaPor: actor,
+  }));
+
+  classes = [...classes, turma];
+  students = [...students, ...newStudents];
+  persistData();
+  return { class: enrichClass(turma), students: newStudents };
+}
+
+function updateClassStudentsStatus(id, payload) {
+  const turma = classes.find(item => String(item.id) === String(id));
+  if (!turma) return { status: 404, error: 'Turma nao encontrada.' };
+  const ids = Array.isArray(payload.studentIds) && payload.studentIds.length > 0
+    ? payload.studentIds.map(String)
+    : students.filter(student => String(student.turmaId) === String(id)).map(student => String(student.id));
+  const field = payload.field;
+  const value = payload.value;
+  if (!allowedStatusFields.has(field) || !allowedStatusValues.has(value)) {
+    return { status: 400, error: 'Status invalido.' };
+  }
+  const actor = payload.actor || 'Responsável DRM';
+  const motivo = payload.motivo || (value === 'recusado' ? 'Recusado em lote pela análise da turma.' : null);
+
+  students = students.map(student => {
+    if (!ids.includes(String(student.id))) return student;
+    return applyStudentStatus(student, field, value, motivo, actor);
+  });
+  classes = classes.map(item => String(item.id) === String(id)
+    ? {
+        ...item,
+        status: value === 'recusado' ? 'com_pendencias' : item.status,
+        historico: [
+          ...(Array.isArray(item.historico) ? item.historico : []),
+          { tipo: `${field}:${value}`, ator: actor, em: new Date().toISOString(), detalhe: `${ids.length} aluno(s).` },
+        ],
+      }
+    : item);
+  persistData();
+  return {
+    class: enrichClass(classes.find(item => String(item.id) === String(id))),
+    students,
+  };
+}
+
 function courseStudents(courseId) {
   const course = courses.find(item => String(item.id) === String(courseId));
   if (!course) return { status: 404, error: 'Curso nao encontrado.' };
@@ -1543,6 +1727,11 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/classes') {
+    sendJson(res, 200, getClasses());
+    return;
+  }
+
   if (req.method === 'GET' && url.pathname === '/api/settings/certificate') {
     sendJson(res, 200, certificateSettings || {});
     return;
@@ -1630,6 +1819,36 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 201, result.student);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/classes/manual') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = createManualClass(body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 201, result);
+    return;
+  }
+
+  if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'classes' && parts[2] && parts[3] === 'students-status') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateClassStudentsStatus(parts[2], body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
     return;
   }
 

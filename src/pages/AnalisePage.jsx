@@ -234,7 +234,7 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
 }
 
 export default function AnalisePage() {
-  const { students, updateStudentStatus, refreshData, loadingData, apiError } = useApp();
+  const { students, classes, updateStudentStatus, updateClassStudentsStatus, refreshData, loadingData, apiError } = useApp();
   const [filter, setFilter] = useState('pendente');
   const [recusaModal, setRecusaModal] = useState(null); // { aluno, tipo }
   const [processing, setProcessing] = useState(null);
@@ -274,6 +274,12 @@ export default function AnalisePage() {
   };
 
   const pendentes = students.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length;
+  const turmaPendentes = classes
+    .map(turma => ({
+      ...turma,
+      students: students.filter(student => String(student.turmaId) === String(turma.id)),
+    }))
+    .filter(turma => turma.students.length > 0);
 
   return (
     <div className="space-y-5">
@@ -309,6 +315,69 @@ export default function AnalisePage() {
           <p className="text-sm text-amber-800">
             <strong>{pendentes} item(s)</strong> aguardando análise. Revise e tome as ações necessárias.
           </p>
+        </div>
+      )}
+
+      {turmaPendentes.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-gray-900">Análise por turma</h3>
+            <span className="text-xs text-gray-400">{turmaPendentes.length} turma(s)</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {turmaPendentes.map(turma => {
+              const certPendentes = turma.students.filter(student => student.statusCadastro === 'aprovado' && student.statusCertificado === 'pendente');
+              const certAprovados = turma.students.filter(student => student.statusCertificado === 'aprovado');
+              const comErro = turma.students.filter(student => student.statusCadastro === 'recusado' || student.statusCertificado === 'recusado');
+              return (
+                <div key={turma.id} className="card space-y-4">
+                  <div>
+                    <p className="text-xs text-blue-700 font-bold uppercase">Turma manual</p>
+                    <h4 className="font-black text-gray-900">{turma.nome}</h4>
+                    <p className="text-xs text-gray-500">{turma.empresa?.nome} - {turma.nomeCurso}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-gray-50 p-2"><p className="font-bold">{turma.students.length}</p><p className="text-[10px] text-gray-500">Alunos</p></div>
+                    <div className="rounded-lg bg-amber-50 p-2"><p className="font-bold text-amber-700">{certPendentes.length}</p><p className="text-[10px] text-amber-600">Pendentes</p></div>
+                    <div className="rounded-lg bg-green-50 p-2"><p className="font-bold text-green-700">{certAprovados.length}</p><p className="text-[10px] text-green-600">Aprovados</p></div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => updateClassStudentsStatus(turma.id, { field: 'statusCertificado', value: 'aprovado' })}
+                      disabled={certPendentes.length === 0}
+                      className="btn-success text-xs disabled:opacity-50"
+                    >
+                      Aprovar certificados em lote
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateClassStudentsStatus(turma.id, { field: 'statusCertificado', value: 'recusado', studentIds: certPendentes.map(student => student.id), motivo: 'Recusado na análise da turma.' })}
+                      disabled={certPendentes.length === 0}
+                      className="btn-danger text-xs disabled:opacity-50"
+                    >
+                      Recusar pendentes
+                    </button>
+                  </div>
+                  {comErro.length > 0 && <p className="text-xs text-red-600">{comErro.length} aluno(s) com recusa ou pendência impeditiva.</p>}
+                  <div className="space-y-1">
+                    {(turma.checklist || []).map(item => (
+                      <div key={item.id} className="flex items-center justify-between text-xs">
+                        <span className="text-gray-600">{item.label}</span>
+                        <span className={
+                          item.status === 'concluido' ? 'text-green-700 font-bold' :
+                          item.status === 'erro' ? 'text-red-700 font-bold' :
+                          item.status === 'bloqueado' ? 'text-gray-400 font-bold' : 'text-amber-700 font-bold'
+                        }>
+                          {item.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

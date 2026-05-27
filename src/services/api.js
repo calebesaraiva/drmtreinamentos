@@ -70,6 +70,7 @@ export const api = {
   getDashboard: () => request('/api/dashboard'),
   getStudents: () => request('/api/students'),
   getCourses: () => request('/api/courses'),
+  getClasses: () => request('/api/classes'),
   getCertificateSettings: () => request('/api/settings/certificate'),
   updateCertificateSettings: (payload) => request('/api/settings/certificate', {
     method: 'PATCH',
@@ -86,6 +87,14 @@ export const api = {
   }),
   createManualStudent: (payload) => request('/api/students/manual', {
     method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  createManualClass: (payload) => request('/api/classes/manual', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateClassStudentsStatus: (classId, payload) => request(`/api/classes/${classId}/students-status`, {
+    method: 'PATCH',
     body: JSON.stringify(payload),
   }),
   createCourse: (course) => request('/api/courses', {

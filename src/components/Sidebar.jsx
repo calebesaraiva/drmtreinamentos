@@ -14,7 +14,7 @@ const navItems = [
   { to: '/cronograma', icon: BookOpenCheck, label: 'Cronograma' },
   { to: '/chamada', icon: ListChecks, label: 'Chamada' },
   { to: '/alunos', icon: Users, label: 'Alunos' },
-  { to: '/cadastro-manual', icon: UserPlus, label: 'Cadastro Manual', highlight: true },
+  { to: '/nova-turma-manual', icon: UserPlus, label: 'Nova turma manual', highlight: true },
   { to: '/analise', icon: ClipboardCheck, label: 'Análise' },
   { to: '/certificados', icon: Send, label: 'Enviar Certificados' },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },

@@ -69,10 +69,11 @@ function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
 }
 
 export default function CertificadosPage() {
-  const { students, courses, refreshData } = useApp();
+  const { students, courses, classes, refreshData } = useApp();
   const [preview, setPreview] = useState(null);
   const [filter, setFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('todas');
+  const [classFilter, setClassFilter] = useState('todas');
   const [selectedIds, setSelectedIds] = useState([]);
   const [action, setAction] = useState('both');
   const [signatureType, setSignatureType] = useState('digital');
@@ -113,7 +114,8 @@ export default function CertificadosPage() {
     .sort((a, b) => String(b).localeCompare(String(a)));
 
   const display = (filter === 'todos' ? aprovados : filter === 'enviado' ? enviados : pendentes)
-    .filter(student => dateFilter === 'todas' || (student.periodoFim || student.data) === dateFilter);
+    .filter(student => dateFilter === 'todas' || (student.periodoFim || student.data) === dateFilter)
+    .filter(student => classFilter === 'todas' || String(student.turmaId) === String(classFilter));
   const selectedStudents = aprovados.filter(student => selectedIds.includes(String(student.id)));
 
   const toggleStudent = (studentId) => {
@@ -209,6 +211,17 @@ export default function CertificadosPage() {
       {/* Actions */}
       <div className="card space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Selecionar turma</label>
+            <select value={classFilter} onChange={event => setClassFilter(event.target.value)} className="input-field">
+              <option value="todas">Todas as turmas</option>
+              {classes.map(turma => (
+                <option key={turma.id} value={turma.id}>
+                  {turma.nome} - {turma.totalAlunos || 0} aluno(s)
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por data do curso</label>
             <select value={dateFilter} onChange={event => setDateFilter(event.target.value)} className="input-field">

@@ -66,6 +66,7 @@ export function AppProvider({ children }) {
   });
   const [students, setStudents] = useState([]);
   const [courses, setCourses] = useState([]);
+  const [classes, setClasses] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,14 +78,16 @@ export function AppProvider({ children }) {
     async function loadInitialData() {
       setLoadingData(true);
       try {
-        const [loadedStudents, loadedCourses] = await Promise.all([
+        const [loadedStudents, loadedCourses, loadedClasses] = await Promise.all([
           api.getStudents(),
           api.getCourses(),
+          api.getClasses(),
         ]);
 
         if (!ignore) {
           setStudents(loadedStudents);
           setCourses(loadedCourses);
+          setClasses(loadedClasses);
           setApiError(null);
         }
       } catch {
@@ -189,14 +192,16 @@ export function AppProvider({ children }) {
 
   const refreshData = useCallback(async () => {
     try {
-      const [loadedStudents, loadedCourses] = await Promise.all([
+      const [loadedStudents, loadedCourses, loadedClasses] = await Promise.all([
         api.getStudents(),
         api.getCourses(),
+        api.getClasses(),
       ]);
       setStudents(loadedStudents);
       setCourses(loadedCourses);
+      setClasses(loadedClasses);
       setApiError(null);
-      return { students: loadedStudents, courses: loadedCourses };
+      return { students: loadedStudents, courses: loadedCourses, classes: loadedClasses };
     } catch {
       setApiError('Não foi possível conectar ao servidor.');
       return null;
@@ -307,6 +312,46 @@ export function AppProvider({ children }) {
   }, [addNotification, user]);
 
   // Students
+  const addManualClass = useCallback(async (payload) => {
+    const actorName = user?.name || 'Responsável DRM';
+    try {
+      const result = await api.createManualClass({ ...payload, actor: actorName });
+      setClasses(prev => [...prev, result.class]);
+      setStudents(prev => [...prev, ...result.students]);
+      setApiError(null);
+      addNotification('Turma criada e enviada para análise.', 'success');
+      return result;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível criar a turma.', 'warning');
+      return null;
+    }
+  }, [addNotification, user]);
+
+  const updateClassStudentsStatus = useCallback(async (classId, payload) => {
+    const actorName = user?.name || 'Responsável DRM';
+    try {
+      const result = await api.updateClassStudentsStatus(classId, { ...payload, actor: actorName });
+      setStudents(result.students);
+      setClasses(prev => prev.map(item => String(item.id) === String(classId) ? result.class : item));
+      setApiError(null);
+      addNotification('Turma atualizada com sucesso.', 'success');
+      return result;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível atualizar a turma.', 'warning');
+      return null;
+    }
+  }, [addNotification, user]);
+
   const addManualStudent = useCallback(async (payload) => {
     const actorName = user?.name || 'Responsável DRM';
     try {
@@ -417,6 +462,7 @@ export function AppProvider({ children }) {
   const value = {
     user, login, logout,
     students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
+    classes, addManualClass, updateClassStudentsStatus,
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,
     sidebarOpen, setSidebarOpen,
