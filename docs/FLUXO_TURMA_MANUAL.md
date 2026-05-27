@@ -11,6 +11,7 @@ A tela `Nova turma manual` cria uma turma completa em etapas: empresa, curso, al
 - `PATCH /api/classes/:id/students-status`: aprova ou recusa alunos/certificados em lote.
 - `POST /api/students/certificates/export`: emite PDF/ZIP, envia e-mail ou executa ambos.
 - `DELETE /api/classes/:id`: remove somente turma marcada como teste (`ambienteTeste=true` ou nome com `[TESTE]`).
+- `DELETE /api/courses/:id`: remove somente curso marcado como `[TESTE]`, usado para limpeza controlada de homologacao.
 
 ## Estrutura da turma
 

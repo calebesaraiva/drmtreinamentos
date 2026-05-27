@@ -1036,6 +1036,26 @@ function updateCourse(id, payload) {
   return { course: updated };
 }
 
+function deleteTestCourse(id, payload = {}) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para remover curso de teste.' };
+  }
+  const course = courses.find(item => String(item.id) === String(id));
+  if (!course) return { status: 404, error: 'Curso nao encontrado.' };
+  if (!String(course.nomeCurso || '').includes('[TESTE]')) {
+    return { status: 403, error: 'Por segurança, somente cursos marcados como [TESTE] podem ser removidos por este endpoint.' };
+  }
+  const hasNonTestStudents = students.some(student => String(student.cursoId) === String(id) && !String(student.nome || '').includes('[TESTE]'));
+  if (hasNonTestStudents) {
+    return { status: 409, error: 'Curso de teste possui alunos sem marcação [TESTE] e não foi removido.' };
+  }
+  courses = courses.filter(item => String(item.id) !== String(id));
+  classes = classes.filter(item => String(item.cursoId) !== String(id));
+  students = students.filter(student => String(student.cursoId) !== String(id));
+  persistData();
+  return { ok: true, removedCourseId: id };
+}
+
 function updateCourseSchedule(id, payload) {
   const index = courses.findIndex(course => String(course.id) === String(id));
   if (index === -1) return { status: 404, error: 'Curso nao encontrado.' };
@@ -1949,6 +1969,17 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, result.course);
+    return;
+  }
+
+  if (req.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'courses' && parts[2] && !parts[3]) {
+    const body = await readJson(req);
+    const result = deleteTestCourse(parts[2], body || {});
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
     return;
   }
 
