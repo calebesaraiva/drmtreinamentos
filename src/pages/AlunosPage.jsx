@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, User, Building2, Phone, Mail,
@@ -202,26 +202,82 @@ const manualInitialForm = {
   emitirCertificado: true,
 };
 
-function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
+function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, loading }) {
   const [form, setForm] = useState(manualInitialForm);
   const [errors, setErrors] = useState({});
   const [createdStudent, setCreatedStudent] = useState(null);
   const [sequenceCount, setSequenceCount] = useState(0);
+  const [step, setStep] = useState('empresa');
+  const [companyMode, setCompanyMode] = useState(null);
+  const [companySearch, setCompanySearch] = useState('');
   const activeCourses = courses.filter(course => course.status !== 'inativo');
   const selectedCourse = courses.find(course => String(course.id) === String(form.cursoId));
+  const registeredCompanies = useMemo(() => {
+    const companyMap = new Map();
+    const addCompany = (name, source = 'Sistema') => {
+      const normalized = String(name || '').trim();
+      if (!normalized) return;
+      const key = normalized.toLowerCase();
+      if (!companyMap.has(key)) {
+        companyMap.set(key, { nome: normalized, source, cursos: 0, alunos: 0 });
+      }
+      const item = companyMap.get(key);
+      if (source === 'Curso') item.cursos += 1;
+      if (source === 'Aluno') item.alunos += 1;
+    };
+
+    courses.forEach(course => addCompany(course.empresaContratante, 'Curso'));
+    students.forEach(student => addCompany(student.empresa, 'Aluno'));
+
+    return [...companyMap.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+  }, [courses, students]);
+  const filteredCompanies = registeredCompanies.filter(company => (
+    !companySearch || company.nome.toLowerCase().includes(companySearch.toLowerCase())
+  ));
 
   const updateField = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
     setErrors(prev => ({ ...prev, [field]: null }));
   };
 
-  const handleClose = () => {
-    if (loading) return;
+  const resetCompanyStep = () => {
+    setStep('empresa');
+    setCompanyMode(null);
+    setCompanySearch('');
     setForm(manualInitialForm);
     setErrors({});
     setCreatedStudent(null);
     setSequenceCount(0);
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    resetCompanyStep();
     onClose();
+  };
+
+  const chooseRegisteredCompany = (companyName) => {
+    setCompanyMode('registered');
+    setCompanySearch(companyName);
+    setForm(prev => ({ ...prev, empresa: companyName }));
+    setErrors(prev => ({ ...prev, empresa: null }));
+    setStep('aluno');
+  };
+
+  const startManualCompany = () => {
+    setCompanyMode('manual');
+    setCompanySearch('');
+    setForm(prev => ({ ...prev, empresa: '' }));
+    setStep('aluno');
+  };
+
+  const continueWithTypedCompany = () => {
+    const companyName = companySearch.trim();
+    if (!companyName) {
+      setErrors(prev => ({ ...prev, empresaLookup: 'Digite ou selecione uma empresa.' }));
+      return;
+    }
+    chooseRegisteredCompany(companyName);
   };
 
   const handleNextSameCourse = () => {
@@ -236,6 +292,7 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
     }));
     setErrors({});
     setCreatedStudent(null);
+    setStep('aluno');
   };
 
   const handleSubmit = async () => {
@@ -316,6 +373,92 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
             </button>
           </div>
         </div>
+      ) : step === 'empresa' ? (
+        <div className="space-y-5">
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <Building2 className="w-5 h-5 text-blue-700 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-blue-950">Primeiro, vamos identificar a empresa contratante</p>
+                <p className="text-xs text-blue-700 mt-1">
+                  Se ela já apareceu em algum curso ou aluno, o sistema reaproveita o nome e acelera o restante do cadastro.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => setCompanyMode('registered')}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                companyMode === 'registered'
+                  ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100'
+                  : 'border-gray-100 hover:border-blue-200 hover:bg-gray-50'
+              }`}
+            >
+              <Search className="w-5 h-5 text-blue-700 mb-3" />
+              <p className="text-sm font-bold text-gray-900">Empresa já registrada</p>
+              <p className="text-xs text-gray-500 mt-1">Buscar e preencher automaticamente.</p>
+            </button>
+            <button
+              type="button"
+              onClick={startManualCompany}
+              className={`text-left rounded-xl border p-4 transition-all ${
+                companyMode === 'manual'
+                  ? 'border-green-600 bg-green-50 ring-2 ring-green-100'
+                  : 'border-gray-100 hover:border-green-200 hover:bg-gray-50'
+              }`}
+            >
+              <Plus className="w-5 h-5 text-green-700 mb-3" />
+              <p className="text-sm font-bold text-gray-900">Nova empresa</p>
+              <p className="text-xs text-gray-500 mt-1">Digitar manualmente no próximo passo.</p>
+            </button>
+          </div>
+
+          {companyMode === 'registered' && (
+            <div className="rounded-xl border border-gray-100 p-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nome da empresa</label>
+                <input
+                  value={companySearch}
+                  onChange={event => {
+                    setCompanySearch(event.target.value);
+                    setErrors(prev => ({ ...prev, empresaLookup: null }));
+                  }}
+                  placeholder="Digite para buscar..."
+                  className={`input-field ${errors.empresaLookup ? 'border-red-300 focus:ring-red-200' : ''}`}
+                />
+                {errors.empresaLookup && <p className="text-xs text-red-500 mt-1">{errors.empresaLookup}</p>}
+              </div>
+
+              <div className="max-h-44 overflow-y-auto space-y-2">
+                {filteredCompanies.length === 0 ? (
+                  <p className="text-xs text-gray-400 py-2">Nenhuma empresa encontrada. Você pode continuar com o nome digitado.</p>
+                ) : filteredCompanies.slice(0, 8).map(company => (
+                  <button
+                    key={company.nome}
+                    type="button"
+                    onClick={() => chooseRegisteredCompany(company.nome)}
+                    className="w-full text-left rounded-lg border border-gray-100 px-3 py-2 hover:border-blue-200 hover:bg-blue-50 transition-colors"
+                  >
+                    <p className="text-sm font-semibold text-gray-800">{company.nome}</p>
+                    <p className="text-xs text-gray-400">
+                      {company.cursos} curso(s) e {company.alunos} aluno(s) vinculados
+                    </p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button type="button" onClick={continueWithTypedCompany} className="btn-primary">
+                  Continuar
+                  <ChevronDown className="w-4 h-4 -rotate-90" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-5">
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -324,7 +467,7 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
             <div>
               <p className="text-sm font-bold text-blue-950">Cadastro direto com validação</p>
               <p className="text-xs text-blue-700 mt-1">
-                O aluno entra aprovado, presente no curso selecionado e, se desejar, já recebe certificado autenticado e assinado.
+                Empresa: <strong>{form.empresa || 'preencha no formulário'}</strong>. O aluno entra aprovado, presente e pode receber certificado assinado.
               </p>
             </div>
           </div>
@@ -381,8 +524,8 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
         </label>
 
         <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
-          <button type="button" onClick={handleClose} disabled={loading} className="btn-secondary disabled:opacity-60">
-            Cancelar
+          <button type="button" onClick={resetCompanyStep} disabled={loading} className="btn-secondary disabled:opacity-60">
+            Voltar
           </button>
           <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
@@ -643,6 +786,7 @@ export default function AlunosPage() {
         isOpen={manualOpen}
         onClose={closeManualModal}
         courses={courses}
+        students={students}
         onSubmit={handleManualSubmit}
         loading={manualSaving}
       />
