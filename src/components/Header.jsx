@@ -10,6 +10,7 @@ const PAGE_TITLES = {
   '/cronograma': 'Cronograma',
   '/chamada': 'Chamada',
   '/alunos': 'Alunos',
+  '/cadastro-manual': 'Cadastro Manual',
   '/analise': 'Análise de Cadastros',
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',

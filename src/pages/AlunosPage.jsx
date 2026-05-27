@@ -1,5 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useMemo, useState } from 'react';
 import {
   Search, Filter, User, Building2, Phone, Mail,
   BookOpen, MapPin, Calendar, ChevronDown, ChevronUp, X,
@@ -210,7 +209,7 @@ const companyInitialForm = {
   email: '',
 };
 
-function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, loading }) {
+export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, loading, embedded = false }) {
   const [form, setForm] = useState(manualInitialForm);
   const [companyForm, setCompanyForm] = useState(companyInitialForm);
   const [companyProfile, setCompanyProfile] = useState(null);
@@ -384,8 +383,8 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
     </div>
   );
 
-  return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
+  const content = (
+    <>
       {createdStudent ? (
         <div className="space-y-5">
           <div className="bg-green-50 border border-green-100 rounded-xl p-5">
@@ -641,13 +640,26 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
         </div>
       </div>
       )}
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="card max-w-5xl mx-auto">
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
+      {content}
     </Modal>
   );
 }
 
 export default function AlunosPage() {
-  const { students, courses, addManualStudent, updateStudentStatus } = useApp();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { students, updateStudentStatus } = useApp();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [filterCurso, setFilterCurso] = useState('todos');
@@ -655,12 +667,6 @@ export default function AlunosPage() {
   const [sortField, setSortField] = useState('nome');
   const [sortDir, setSortDir] = useState('asc');
   const [processing, setProcessing] = useState(null);
-  const [manualOpen, setManualOpen] = useState(() => searchParams.get('manual') === '1');
-  const [manualSaving, setManualSaving] = useState(false);
-
-  useEffect(() => {
-    if (searchParams.get('manual') === '1') setManualOpen(true);
-  }, [searchParams]);
 
   const cursos = [...new Set(students.map(s => s.nomeCurso))];
 
@@ -717,27 +723,6 @@ export default function AlunosPage() {
     }
   };
 
-  const handleManualSubmit = async (payload) => {
-    setManualSaving(true);
-    try {
-      return await addManualStudent(payload);
-    } finally {
-      setManualSaving(false);
-    }
-  };
-
-  const openManualModal = () => {
-    setManualOpen(true);
-    setSearchParams({ manual: '1' });
-  };
-
-  const closeManualModal = () => {
-    setManualOpen(false);
-    if (searchParams.get('manual') === '1') {
-      setSearchParams({});
-    }
-  };
-
   const SortIcon = ({ field }) => {
     if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />;
@@ -781,14 +766,6 @@ export default function AlunosPage() {
             <option value="todos">Todos os cursos</option>
             {cursos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button
-            type="button"
-            onClick={openManualModal}
-            className="btn-primary justify-center sm:w-auto"
-          >
-            <Plus className="w-4 h-4" />
-            Adicionar manual
-          </button>
         </div>
       </div>
 
@@ -889,14 +866,6 @@ export default function AlunosPage() {
         processing={processing}
       />
 
-      <ManualStudentModal
-        isOpen={manualOpen}
-        onClose={closeManualModal}
-        courses={courses}
-        students={students}
-        onSubmit={handleManualSubmit}
-        loading={manualSaving}
-      />
     </div>
   );
 }

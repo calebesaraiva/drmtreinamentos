@@ -8,6 +8,7 @@ import QRCodePage from './pages/QRCodePage';
 import CronogramaPage from './pages/CronogramaPage';
 import ChamadaPage from './pages/ChamadaPage';
 import AlunosPage from './pages/AlunosPage';
+import CadastroManualPage from './pages/CadastroManualPage';
 import AnalisePage from './pages/AnalisePage';
 import CertificadosPage from './pages/CertificadosPage';
 import RelatoriosPage from './pages/RelatoriosPage';
@@ -30,6 +31,7 @@ export default function App() {
             <Route path="cronograma" element={<CronogramaPage />} />
             <Route path="chamada" element={<ChamadaPage />} />
             <Route path="alunos" element={<AlunosPage />} />
+            <Route path="cadastro-manual" element={<CadastroManualPage />} />
             <Route path="analise" element={<AnalisePage />} />
             <Route path="certificados" element={<CertificadosPage />} />
             <Route path="relatorios" element={<RelatoriosPage />} />

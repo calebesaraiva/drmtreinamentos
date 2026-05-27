@@ -154,7 +154,7 @@ export default function Dashboard() {
             Novo QR Code
           </button>
           <button
-            onClick={() => navigate('/alunos?manual=1')}
+            onClick={() => navigate('/cadastro-manual')}
             className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5"
           >
             <UserPlus className="w-4 h-4" />
