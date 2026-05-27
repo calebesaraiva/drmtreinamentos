@@ -202,8 +202,18 @@ const manualInitialForm = {
   emitirCertificado: true,
 };
 
+const companyInitialForm = {
+  nome: '',
+  cnpj: '',
+  contato: '',
+  telefone: '',
+  email: '',
+};
+
 function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, loading }) {
   const [form, setForm] = useState(manualInitialForm);
+  const [companyForm, setCompanyForm] = useState(companyInitialForm);
+  const [companyProfile, setCompanyProfile] = useState(null);
   const [errors, setErrors] = useState({});
   const [createdStudent, setCreatedStudent] = useState(null);
   const [sequenceCount, setSequenceCount] = useState(0);
@@ -240,11 +250,18 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
     setErrors(prev => ({ ...prev, [field]: null }));
   };
 
+  const updateCompanyField = (field, value) => {
+    setCompanyForm(prev => ({ ...prev, [field]: value }));
+    setErrors(prev => ({ ...prev, [field]: null }));
+  };
+
   const resetCompanyStep = () => {
     setStep('empresa');
     setCompanyMode(null);
     setCompanySearch('');
     setForm(manualInitialForm);
+    setCompanyForm(companyInitialForm);
+    setCompanyProfile(null);
     setErrors({});
     setCreatedStudent(null);
     setSequenceCount(0);
@@ -260,6 +277,7 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
     setCompanyMode('registered');
     setCompanySearch(companyName);
     setForm(prev => ({ ...prev, empresa: companyName }));
+    setCompanyProfile({ nome: companyName, origem: 'registrada' });
     setErrors(prev => ({ ...prev, empresa: null }));
     setStep('aluno');
   };
@@ -268,7 +286,10 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
     setCompanyMode('manual');
     setCompanySearch('');
     setForm(prev => ({ ...prev, empresa: '' }));
-    setStep('aluno');
+    setCompanyForm(companyInitialForm);
+    setCompanyProfile(null);
+    setErrors({});
+    setStep('novaEmpresa');
   };
 
   const continueWithTypedCompany = () => {
@@ -278,6 +299,23 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
       return;
     }
     chooseRegisteredCompany(companyName);
+  };
+
+  const continueWithNewCompany = () => {
+    const companyName = companyForm.nome.trim();
+    if (!companyName) {
+      setErrors(prev => ({ ...prev, nome: 'Informe o nome da empresa.' }));
+      return;
+    }
+
+    setForm(prev => ({ ...prev, empresa: companyName }));
+    setCompanyProfile({
+      ...companyForm,
+      nome: companyName,
+      origem: 'nova',
+    });
+    setErrors({});
+    setStep('aluno');
   };
 
   const handleNextSameCourse = () => {
@@ -325,6 +363,20 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
         type={type}
         value={form[field]}
         onChange={event => updateField(field, event.target.value)}
+        placeholder={placeholder}
+        className={`input-field ${errors[field] ? 'border-red-300 focus:ring-red-200' : ''}`}
+      />
+      {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field]}</p>}
+    </div>
+  );
+
+  const companyInput = (field, label, type = 'text', placeholder = '') => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input
+        type={type}
+        value={companyForm[field]}
+        onChange={event => updateCompanyField(field, event.target.value)}
         placeholder={placeholder}
         className={`input-field ${errors[field] ? 'border-red-300 focus:ring-red-200' : ''}`}
       />
@@ -412,7 +464,7 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
             >
               <Plus className="w-5 h-5 text-green-700 mb-3" />
               <p className="text-sm font-bold text-gray-900">Nova empresa</p>
-              <p className="text-xs text-gray-500 mt-1">Digitar manualmente no próximo passo.</p>
+              <p className="text-xs text-gray-500 mt-1">Cadastrar a empresa antes dos alunos.</p>
             </button>
           </div>
 
@@ -459,6 +511,47 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
             </div>
           )}
         </div>
+      ) : step === 'novaEmpresa' ? (
+        <div className="space-y-5">
+          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
+            <div className="flex items-start gap-3">
+              <Building2 className="w-5 h-5 text-green-700 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-green-950">Cadastrar empresa contratante</p>
+                <p className="text-xs text-green-700 mt-1">
+                  Defina primeiro quem contratou o treinamento. Depois o sistema usa essa empresa para todos os alunos desta sequência.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {companyInput('nome', 'Nome da empresa *', 'text', 'Ex: Empresa ABC Ltda')}
+            {companyInput('cnpj', 'CNPJ', 'text', '00.000.000/0000-00')}
+            {companyInput('contato', 'Contato responsável', 'text', 'Nome do contato')}
+            {companyInput('telefone', 'Telefone da empresa', 'text', '(00) 00000-0000')}
+            <div className="sm:col-span-2">
+              {companyInput('email', 'E-mail da empresa', 'email', 'empresa@email.com')}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+            <p className="text-xs font-semibold text-amber-900">Próximo passo</p>
+            <p className="text-xs text-amber-800 mt-1">
+              Depois de confirmar a empresa, você escolhe o curso e cadastra os alunos. Ao cadastrar outro aluno, estes dados permanecem salvos na sequência.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
+            <button type="button" onClick={resetCompanyStep} className="btn-secondary">
+              Voltar
+            </button>
+            <button type="button" onClick={continueWithNewCompany} className="btn-primary">
+              Continuar para alunos
+              <ChevronDown className="w-4 h-4 -rotate-90" />
+            </button>
+          </div>
+        </div>
       ) : (
         <div className="space-y-5">
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -469,8 +562,23 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
               <p className="text-xs text-blue-700 mt-1">
                 Empresa: <strong>{form.empresa || 'preencha no formulário'}</strong>. O aluno entra aprovado, presente e pode receber certificado assinado.
               </p>
+              {companyProfile?.origem === 'nova' && (
+                <p className="text-xs text-blue-600 mt-1">
+                  {companyProfile.cnpj ? `CNPJ ${companyProfile.cnpj}` : 'Nova empresa'}{companyProfile.contato ? ` - contato: ${companyProfile.contato}` : ''}
+                </p>
+              )}
             </div>
           </div>
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase">Empresa contratante</p>
+            <p className="text-sm font-bold text-gray-900">{form.empresa || '-'}</p>
+          </div>
+          <button type="button" onClick={resetCompanyStep} disabled={loading} className="btn-secondary text-xs disabled:opacity-60">
+            Trocar empresa
+          </button>
         </div>
 
         <div>
@@ -502,7 +610,6 @@ function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, load
           {input('cpf', 'CPF *', 'text', '000.000.000-00')}
           {input('email', 'E-mail *', 'email', 'aluno@email.com')}
           {input('telefone', 'Telefone *', 'text', '(00) 00000-0000')}
-          {input('empresa', 'Empresa *', 'text', 'Empresa do aluno')}
           {input('cargo', 'Cargo/Função *', 'text', 'Função no treinamento')}
           {input('presenca', 'Presença (%)', 'number')}
           {input('notaProva', 'Nota', 'number')}
