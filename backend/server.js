@@ -74,7 +74,7 @@ const CORS_ALLOWED_ORIGINS = String(
   .map(item => item.trim())
   .filter(Boolean);
 const CORS_PRIMARY_ORIGIN = CORS_ALLOWED_ORIGINS[0] || 'http://localhost:5173';
-const APP_USERS = [
+const ENV_APP_USERS = [
   {
     id: 1,
     username: process.env.ADMIN_USERNAME || 'admin',
@@ -90,6 +90,8 @@ const APP_USERS = [
     name: process.env.RESPONSAVEL_NAME || 'Responsável DRM',
     role: 'responsavel',
     email: process.env.RESPONSAVEL_EMAIL || 'deivson@drmtreinamentos.com',
+    status: 'ativo',
+    tipo: 'usuario',
   },
 ].filter(user => user.username && user.password);
 
@@ -113,12 +115,14 @@ const mailTransport = SMTP_HOST && SMTP_USER && SMTP_PASS
   : null;
 
 function fallbackData() {
+  const defaultUsers = structuredClone(ENV_APP_USERS);
   if (dbPool) {
     return {
       students: [],
       courses: [],
       classes: [],
       certificateSettings: {},
+      users: defaultUsers,
     };
   }
 
@@ -128,6 +132,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      users: defaultUsers,
     };
   }
 
@@ -138,6 +143,7 @@ function fallbackData() {
       courses: Array.isArray(parsed.courses) ? parsed.courses : structuredClone(MOCK_COURSES),
       classes: Array.isArray(parsed.classes) ? parsed.classes : [],
       certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
+      users: Array.isArray(parsed.users) ? parsed.users : defaultUsers,
     };
   } catch {
     return {
@@ -145,6 +151,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      users: defaultUsers,
     };
   }
 }
@@ -167,6 +174,7 @@ async function loadData() {
   await ensureDatabase();
   const existing = await dbPool.query('SELECT data FROM app_state WHERE id = 1');
   if (existing.rows[0]?.data) {
+    const storedUsers = Array.isArray(existing.rows[0].data.users) ? existing.rows[0].data.users : localData.users;
     return {
       students: Array.isArray(existing.rows[0].data.students) ? existing.rows[0].data.students : localData.students,
       courses: Array.isArray(existing.rows[0].data.courses) ? existing.rows[0].data.courses : localData.courses,
@@ -174,6 +182,7 @@ async function loadData() {
       certificateSettings: existing.rows[0].data.certificateSettings && typeof existing.rows[0].data.certificateSettings === 'object'
         ? existing.rows[0].data.certificateSettings
         : {},
+      users: mergeEnvUsers(storedUsers),
     };
   }
 
@@ -191,9 +200,10 @@ let students = initialData.students;
 let courses = initialData.courses;
 let classes = initialData.classes || [];
 let certificateSettings = initialData.certificateSettings || {};
+let users = mergeEnvUsers(initialData.users || []);
 
 function persistData() {
-  const payload = { students, courses, classes, certificateSettings };
+  const payload = { students, courses, classes, certificateSettings, users };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -217,6 +227,33 @@ function updateCertificateSettings(payload) {
   };
   persistData();
   return certificateSettings;
+}
+
+function sanitizeManagedUser(user) {
+  const { password, ...safeUser } = user;
+  return safeUser;
+}
+
+function mergeEnvUsers(storedUsers = []) {
+  const usersByUsername = new Map(
+    storedUsers.map(item => [String(item.username || '').toLowerCase(), item]),
+  );
+
+  ENV_APP_USERS.forEach(envUser => {
+    const key = String(envUser.username || '').toLowerCase();
+    if (!key) return;
+    if (!usersByUsername.has(key)) {
+      usersByUsername.set(key, {
+        ...envUser,
+        id: envUser.id || Date.now(),
+        status: 'ativo',
+        tipo: 'usuario',
+        createdAt: new Date().toISOString(),
+      });
+    }
+  });
+
+  return [...usersByUsername.values()];
 }
 
 const allowedStatusFields = new Set(['statusCadastro', 'statusCertificado']);
@@ -347,11 +384,6 @@ function badRequest(res, message) {
   sendJson(res, 400, { error: message });
 }
 
-function withoutPassword(user) {
-  const { password, ...safeUser } = user;
-  return safeUser;
-}
-
 async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -362,6 +394,124 @@ async function readJson(req) {
   } catch {
     return null;
   }
+}
+
+const allowedUserRoles = new Set(['admin', 'responsavel', 'usuario', 'instrutor']);
+
+function normalizeUserRole(role) {
+  const normalized = String(role || '').trim().toLowerCase();
+  return allowedUserRoles.has(normalized) ? normalized : 'usuario';
+}
+
+function normalizeUserStatus(status) {
+  return String(status || '').toLowerCase() === 'inativo' ? 'inativo' : 'ativo';
+}
+
+function currentUserFromAuth(auth = {}) {
+  return users.find(item => String(item.id) === String(auth.sub)) || null;
+}
+
+function listUsers() {
+  return users.map(sanitizeManagedUser);
+}
+
+function createManagedUser(payload = {}) {
+  const name = String(payload.name || '').trim();
+  const username = String(payload.username || '').trim();
+  const email = String(payload.email || '').trim().toLowerCase();
+  const password = String(payload.password || '').trim();
+  const role = normalizeUserRole(payload.role);
+  const tipo = payload.tipo === 'instrutor' ? 'instrutor' : 'usuario';
+  const status = normalizeUserStatus(payload.status);
+
+  if (!name || !username || !email || !password) {
+    return { status: 400, error: 'Nome, usuário, e-mail e senha são obrigatórios.' };
+  }
+  if (password.length < 6) {
+    return { status: 400, error: 'A senha deve ter pelo menos 6 caracteres.' };
+  }
+  const duplicated = users.some(item => (
+    String(item.username).toLowerCase() === username.toLowerCase() ||
+    String(item.email).toLowerCase() === email
+  ));
+  if (duplicated) {
+    return { status: 400, error: 'Usuário ou e-mail já cadastrado.' };
+  }
+
+  const newUser = {
+    id: Date.now(),
+    name,
+    username,
+    email,
+    password,
+    role,
+    tipo,
+    status,
+    createdAt: new Date().toISOString(),
+  };
+  users = [newUser, ...users];
+  persistData();
+  return { user: sanitizeManagedUser(newUser) };
+}
+
+function updateManagedUser(id, payload = {}) {
+  const index = users.findIndex(item => String(item.id) === String(id));
+  if (index === -1) return { status: 404, error: 'Usuário não encontrado.' };
+
+  const target = users[index];
+  const nextUsername = payload.username !== undefined ? String(payload.username || '').trim() : target.username;
+  const nextEmail = payload.email !== undefined ? String(payload.email || '').trim().toLowerCase() : target.email;
+  const nextName = payload.name !== undefined ? String(payload.name || '').trim() : target.name;
+  const nextRole = payload.role !== undefined ? normalizeUserRole(payload.role) : target.role;
+  const nextStatus = payload.status !== undefined ? normalizeUserStatus(payload.status) : target.status;
+  const nextTipo = payload.tipo !== undefined ? (payload.tipo === 'instrutor' ? 'instrutor' : 'usuario') : target.tipo;
+  const nextPassword = payload.password !== undefined ? String(payload.password || '').trim() : target.password;
+
+  if (!nextName || !nextUsername || !nextEmail) {
+    return { status: 400, error: 'Nome, usuário e e-mail são obrigatórios.' };
+  }
+  if (!nextPassword) {
+    return { status: 400, error: 'Senha inválida.' };
+  }
+  if (payload.password !== undefined && nextPassword.length < 6) {
+    return { status: 400, error: 'A senha deve ter pelo menos 6 caracteres.' };
+  }
+
+  const duplicated = users.some(item => (
+    String(item.id) !== String(id) && (
+      String(item.username).toLowerCase() === nextUsername.toLowerCase() ||
+      String(item.email).toLowerCase() === nextEmail
+    )
+  ));
+  if (duplicated) {
+    return { status: 400, error: 'Usuário ou e-mail já cadastrado.' };
+  }
+
+  users[index] = {
+    ...target,
+    name: nextName,
+    username: nextUsername,
+    email: nextEmail,
+    password: nextPassword,
+    role: nextRole,
+    tipo: nextTipo,
+    status: nextStatus,
+    updatedAt: new Date().toISOString(),
+  };
+  persistData();
+  return { user: sanitizeManagedUser(users[index]) };
+}
+
+function deleteManagedUser(id, auth = null) {
+  const index = users.findIndex(item => String(item.id) === String(id));
+  if (index === -1) return { status: 404, error: 'Usuário não encontrado.' };
+  const target = users[index];
+  if (auth && String(auth.sub) === String(id)) {
+    return { status: 400, error: 'Você não pode remover seu próprio usuário logado.' };
+  }
+  users = users.filter(item => String(item.id) !== String(id));
+  persistData();
+  return { removed: sanitizeManagedUser(target) };
 }
 
 function buildCertificateAuthorization(actorName = 'Responsável DRM') {
@@ -1885,13 +2035,17 @@ const server = createServer(async (req, res) => {
     }
     const username = String(body.username || '').trim();
     const password = String(body.password || '').trim();
-    const user = APP_USERS.find(item => item.username === username && item.password === password);
-    if (!user) {
+    const matchedUser = users.find(item => (
+      item.username === username &&
+      item.password === password &&
+      normalizeUserStatus(item.status) === 'ativo'
+    ));
+    if (!matchedUser) {
       sendJson(res, 401, { error: 'Usuario ou senha invalidos.' });
       return;
     }
-    const auth = issueAuthToken(user);
-    sendJson(res, 200, { user: withoutPassword(user), ...auth });
+    const auth = issueAuthToken(matchedUser);
+    sendJson(res, 200, { user: sanitizeManagedUser(matchedUser), ...auth });
     return;
   }
 
@@ -1907,6 +2061,67 @@ const server = createServer(async (req, res) => {
       if (!authPayload) return;
       req.auth = authPayload;
     }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/users') {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para listar usuários.' });
+      return;
+    }
+    sendJson(res, 200, listUsers());
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/users') {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para criar usuários.' });
+      return;
+    }
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = createManagedUser(body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 201, result.user);
+    return;
+  }
+
+  if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'users' && parts[2]) {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para editar usuários.' });
+      return;
+    }
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateManagedUser(parts[2], body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result.user);
+    return;
+  }
+
+  if (req.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'users' && parts[2]) {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para remover usuários.' });
+      return;
+    }
+    const result = deleteManagedUser(parts[2], req.auth);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result.removed);
+    return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {

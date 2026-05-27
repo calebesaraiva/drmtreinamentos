@@ -14,6 +14,7 @@ import AnalisePage from './pages/AnalisePage';
 import CertificadosPage from './pages/CertificadosPage';
 import RelatoriosPage from './pages/RelatoriosPage';
 import ConfiguracoesPage from './pages/ConfiguracoesPage';
+import UsuariosPage from './pages/UsuariosPage';
 import PublicCoursesPage from './pages/PublicCoursesPage';
 import ValidarCertificadoPage from './pages/ValidarCertificadoPage';
 
@@ -37,6 +38,7 @@ export default function App() {
             <Route path="analise" element={<AnalisePage />} />
             <Route path="certificados" element={<CertificadosPage />} />
             <Route path="relatorios" element={<RelatoriosPage />} />
+            <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />

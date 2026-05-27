@@ -71,6 +71,7 @@ export function AppProvider({ children }) {
   const [apiError, setApiError] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [systemUsers, setSystemUsers] = useState([]);
 
   useEffect(() => {
     api.setToken(localStorage.getItem('drmAuthToken') || '');
@@ -474,6 +475,63 @@ export function AppProvider({ children }) {
     }
   }, [addNotification]);
 
+  const refreshSystemUsers = useCallback(async () => {
+    try {
+      const loaded = await api.getUsers();
+      setSystemUsers(Array.isArray(loaded) ? loaded : []);
+      return loaded;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        addNotification(error.message, 'error');
+      }
+      return null;
+    }
+  }, [addNotification]);
+
+  const addSystemUser = useCallback(async (payload) => {
+    try {
+      const created = await api.createUser(payload);
+      setSystemUsers(prev => [created, ...prev]);
+      addNotification('Usuário cadastrado com sucesso.', 'success');
+      return { success: true, user: created };
+    } catch (error) {
+      const message = error?.message || 'Não foi possível cadastrar o usuário.';
+      addNotification(message, 'error');
+      return { success: false, error: message };
+    }
+  }, [addNotification]);
+
+  const updateSystemUser = useCallback(async (id, payload) => {
+    try {
+      const updated = await api.updateUser(id, payload);
+      setSystemUsers(prev => prev.map(item => (String(item.id) === String(id) ? updated : item)));
+      addNotification('Cadastro atualizado com sucesso.', 'success');
+      return updated;
+    } catch (error) {
+      addNotification(error?.message || 'Não foi possível atualizar o usuário.', 'error');
+      return null;
+    }
+  }, [addNotification]);
+
+  const toggleSystemUserStatus = useCallback(async (id) => {
+    const target = systemUsers.find(item => String(item.id) === String(id));
+    if (!target) return null;
+    const nextStatus = target.status === 'ativo' ? 'inativo' : 'ativo';
+    return updateSystemUser(id, { status: nextStatus });
+  }, [systemUsers, updateSystemUser]);
+
+  const removeSystemUser = useCallback(async (id) => {
+    try {
+      await api.deleteUser(id);
+      setSystemUsers(prev => prev.filter(item => String(item.id) !== String(id)));
+      addNotification('Usuário removido.', 'success');
+      return true;
+    } catch (error) {
+      addNotification(error?.message || 'Não foi possível remover o usuário.', 'error');
+      return false;
+    }
+  }, [addNotification]);
+
   const value = {
     user, login, logout,
     students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
@@ -481,6 +539,7 @@ export function AppProvider({ children }) {
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,
     sidebarOpen, setSidebarOpen,
+    systemUsers, refreshSystemUsers, addSystemUser, updateSystemUser, toggleSystemUserStatus, removeSystemUser,
     notifications, addNotification, markAllNotificationsRead,
   };
 

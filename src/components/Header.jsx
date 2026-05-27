@@ -15,6 +15,7 @@ const PAGE_TITLES = {
   '/analise': 'Análise de Cadastros',
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',
+  '/usuarios': 'Usuários',
   '/configuracoes': 'Configurações',
 };
 

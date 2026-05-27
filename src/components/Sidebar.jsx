@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Users, ClipboardCheck,
   Send, Settings, BarChart3, LogOut, X, ListChecks,
-  ChevronRight, BookOpenCheck, UserPlus
+  ChevronRight, BookOpenCheck, UserPlus, UserCog
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import BrandLogo from './BrandLogo';
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/analise', icon: ClipboardCheck, label: 'Análise' },
   { to: '/certificados', icon: Send, label: 'Enviar Certificados' },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
+  { to: '/usuarios', icon: UserCog, label: 'Usuários' },
   { to: '/configuracoes', icon: Settings, label: 'Configurações' },
 ];
 

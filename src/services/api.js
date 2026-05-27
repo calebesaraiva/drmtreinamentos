@@ -91,6 +91,18 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   }),
+  getUsers: () => request('/api/users'),
+  createUser: (payload) => request('/api/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateUser: (userId, payload) => request(`/api/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  deleteUser: (userId) => request(`/api/users/${userId}`, {
+    method: 'DELETE',
+  }),
   getDashboard: () => request('/api/dashboard'),
   getStudents: () => request('/api/students'),
   getCourses: () => request('/api/courses'),
