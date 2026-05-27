@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Search, ShieldCheck, UserCog, Trash2, Power, Loader2 } from 'lucide-react';
+import { Plus, Search, ShieldCheck, UserCog, Trash2, Power, Loader2, Pencil } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const initialForm = {
@@ -13,11 +13,21 @@ const initialForm = {
 };
 
 export default function UsuariosPage() {
-  const { user, systemUsers, refreshSystemUsers, addSystemUser, toggleSystemUserStatus, removeSystemUser } = useApp();
+  const { user, systemUsers, refreshSystemUsers, addSystemUser, updateSystemUser, toggleSystemUserStatus, removeSystemUser } = useApp();
   const [form, setForm] = useState(initialForm);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    name: '',
+    username: '',
+    email: '',
+    role: 'usuario',
+    status: 'ativo',
+    password: '',
+  });
+  const [editingSave, setEditingSave] = useState(false);
 
   const isAllowed = user?.role === 'admin' || user?.role === 'responsavel';
 
@@ -55,6 +65,46 @@ export default function UsuariosPage() {
     setSaving(false);
     if (!result?.success) return;
     setForm(initialForm);
+  };
+
+  const startEdit = (item) => {
+    setEditingId(item.id);
+    setEditForm({
+      name: item.name || '',
+      username: item.username || '',
+      email: item.email || '',
+      role: item.role || 'usuario',
+      status: item.status || 'ativo',
+      password: '',
+    });
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm({
+      name: '',
+      username: '',
+      email: '',
+      role: 'usuario',
+      status: 'ativo',
+      password: '',
+    });
+  };
+
+  const saveEdit = async (id) => {
+    setEditingSave(true);
+    const payload = {
+      name: editForm.name,
+      username: editForm.username,
+      email: editForm.email,
+      role: editForm.role,
+      status: editForm.status,
+    };
+    if (editForm.password.trim()) payload.password = editForm.password.trim();
+    const result = await updateSystemUser(id, payload);
+    setEditingSave(false);
+    if (!result) return;
+    cancelEdit();
   };
 
   if (!isAllowed) {
@@ -133,26 +183,102 @@ export default function UsuariosPage() {
               {filteredUsers.map(item => (
                 <tr key={item.id} className="border-b border-gray-50">
                   <td className="py-2 pr-2">
-                    <p className="font-medium text-gray-900">{item.name}</p>
-                    <p className="text-xs text-gray-500">{item.email}</p>
+                    {editingId === item.id ? (
+                      <input
+                        className="input-field text-sm"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm(p => ({ ...p, name: e.target.value }))}
+                      />
+                    ) : (
+                      <>
+                        <p className="font-medium text-gray-900">{item.name}</p>
+                        <p className="text-xs text-gray-500">{item.email}</p>
+                      </>
+                    )}
                   </td>
-                  <td className="py-2 pr-2 text-gray-700">{item.username}</td>
-                  <td className="py-2 pr-2 capitalize">{item.role}</td>
+                  <td className="py-2 pr-2 text-gray-700">
+                    {editingId === item.id ? (
+                      <input
+                        className="input-field text-sm"
+                        value={editForm.username}
+                        onChange={(e) => setEditForm(p => ({ ...p, username: e.target.value }))}
+                      />
+                    ) : item.username}
+                  </td>
+                  <td className="py-2 pr-2 capitalize">
+                    {editingId === item.id ? (
+                      <select
+                        className="input-field text-sm"
+                        value={editForm.role}
+                        onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
+                      >
+                        <option value="instrutor">Instrutor</option>
+                        <option value="usuario">Usuário</option>
+                        <option value="responsavel">Responsável</option>
+                        <option value="admin">Administrador</option>
+                      </select>
+                    ) : item.role}
+                  </td>
                   <td className="py-2 pr-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${item.status === 'ativo' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                      {item.status}
-                    </span>
+                    {editingId === item.id ? (
+                      <div className="space-y-2">
+                        <select
+                          className="input-field text-sm"
+                          value={editForm.status}
+                          onChange={(e) => setEditForm(p => ({ ...p, status: e.target.value }))}
+                        >
+                          <option value="ativo">ativo</option>
+                          <option value="inativo">inativo</option>
+                        </select>
+                        <input
+                          type="password"
+                          className="input-field text-sm"
+                          value={editForm.password}
+                          onChange={(e) => setEditForm(p => ({ ...p, password: e.target.value }))}
+                          placeholder="Nova senha (opcional)"
+                        />
+                        <input
+                          type="email"
+                          className="input-field text-sm"
+                          value={editForm.email}
+                          onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
+                          placeholder="E-mail"
+                        />
+                      </div>
+                    ) : (
+                      <span className={`text-xs px-2 py-1 rounded-full ${item.status === 'ativo' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
+                        {item.status}
+                      </span>
+                    )}
                   </td>
                   <td className="py-2">
                     <div className="flex items-center gap-2">
-                      <button type="button" onClick={async () => { await toggleSystemUserStatus(item.id); }} className="btn-secondary text-xs py-1.5 px-2.5">
-                        <Power className="w-3.5 h-3.5" />
-                        {item.status === 'ativo' ? 'Desativar' : 'Ativar'}
-                      </button>
-                      <button type="button" onClick={async () => { await removeSystemUser(item.id); }} className="btn-danger text-xs py-1.5 px-2.5">
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Remover
-                      </button>
+                      {editingId === item.id ? (
+                        <>
+                          <button type="button" onClick={async () => { await saveEdit(item.id); }} disabled={editingSave} className="btn-primary text-xs py-1.5 px-2.5 disabled:opacity-60">
+                            {editingSave ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                            Salvar
+                          </button>
+                          <button type="button" onClick={cancelEdit} className="btn-secondary text-xs py-1.5 px-2.5">
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => startEdit(item)} className="btn-secondary text-xs py-1.5 px-2.5">
+                            <Pencil className="w-3.5 h-3.5" />
+                            Editar
+                          </button>
+                          <button type="button" onClick={async () => { await toggleSystemUserStatus(item.id); }} className="btn-secondary text-xs py-1.5 px-2.5">
+                            <Power className="w-3.5 h-3.5" />
+                            {item.status === 'ativo' ? 'Desativar' : 'Ativar'}
+                          </button>
+                          <button type="button" onClick={async () => { await removeSystemUser(item.id); }} className="btn-danger text-xs py-1.5 px-2.5">
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Remover
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
