@@ -205,6 +205,8 @@ const manualInitialForm = {
 function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
   const [form, setForm] = useState(manualInitialForm);
   const [errors, setErrors] = useState({});
+  const [createdStudent, setCreatedStudent] = useState(null);
+  const [sequenceCount, setSequenceCount] = useState(0);
   const activeCourses = courses.filter(course => course.status !== 'inativo');
   const selectedCourse = courses.find(course => String(course.id) === String(form.cursoId));
 
@@ -217,7 +219,23 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
     if (loading) return;
     setForm(manualInitialForm);
     setErrors({});
+    setCreatedStudent(null);
+    setSequenceCount(0);
     onClose();
+  };
+
+  const handleNextSameCourse = () => {
+    setForm(prev => ({
+      ...manualInitialForm,
+      cursoId: prev.cursoId,
+      empresa: prev.empresa,
+      cargo: prev.cargo,
+      presenca: prev.presenca,
+      notaProva: prev.notaProva,
+      emitirCertificado: prev.emitirCertificado,
+    }));
+    setErrors({});
+    setCreatedStudent(null);
   };
 
   const handleSubmit = async () => {
@@ -237,7 +255,10 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
       presenca: Number(form.presenca || 100),
       notaProva: Number(form.notaProva || 10),
     });
-    if (created) handleClose();
+    if (created) {
+      setCreatedStudent(created);
+      setSequenceCount(prev => prev + 1);
+    }
   };
 
   const input = (field, label, type = 'text', placeholder = '') => (
@@ -256,7 +277,47 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
-      <div className="space-y-5">
+      {createdStudent ? (
+        <div className="space-y-5">
+          <div className="bg-green-50 border border-green-100 rounded-xl p-5">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="w-6 h-6 text-green-700 mt-0.5" />
+              <div>
+                <p className="text-base font-bold text-green-950">Cadastro finalizado</p>
+                <p className="text-sm text-green-800 mt-1">
+                  {createdStudent.nome} foi cadastrado em {createdStudent.nomeCurso}.
+                </p>
+                {createdStudent.certificadoAssinaturaCodigo && (
+                  <p className="text-xs font-mono text-green-700 mt-2">{createdStudent.certificadoAssinaturaCodigo}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-gray-100 p-4">
+            <p className="text-sm font-bold text-gray-900">Deseja cadastrar mais um aluno neste mesmo curso?</p>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-gray-500">
+              <span><strong className="text-gray-700">Curso:</strong> {selectedCourse?.nomeCurso || createdStudent.nomeCurso}</span>
+              <span><strong className="text-gray-700">Local:</strong> {selectedCourse?.local || createdStudent.local}</span>
+              <span><strong className="text-gray-700">Empresa:</strong> {form.empresa}</span>
+            </div>
+            {sequenceCount > 1 && (
+              <p className="text-xs text-blue-600 mt-3">{sequenceCount} alunos cadastrados nesta sequência.</p>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
+            <button type="button" onClick={handleClose} className="btn-secondary">
+              Encerrar
+            </button>
+            <button type="button" onClick={handleNextSameCourse} className="btn-primary">
+              <Plus className="w-4 h-4" />
+              Cadastrar outro no mesmo curso
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
         <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <Award className="w-5 h-5 text-blue-700 mt-0.5" />
@@ -325,10 +386,11 @@ function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
           </button>
           <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {loading ? 'Cadastrando...' : 'Cadastrar e validar'}
+            {loading ? 'Finalizando...' : 'Finalizar cadastro'}
           </button>
         </div>
       </div>
+      )}
     </Modal>
   );
 }
