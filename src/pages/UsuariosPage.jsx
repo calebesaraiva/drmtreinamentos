@@ -13,7 +13,7 @@ const initialForm = {
 };
 
 export default function UsuariosPage() {
-  const { user, systemUsers, refreshSystemUsers, addSystemUser, updateSystemUser, toggleSystemUserStatus, removeSystemUser } = useApp();
+  const { user, systemUsers, refreshSystemUsers, addSystemUser, updateSystemUser, toggleSystemUserStatus, removeSystemUser, addNotification } = useApp();
   const [form, setForm] = useState(initialForm);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -93,6 +93,7 @@ export default function UsuariosPage() {
 
   const saveEdit = async (id) => {
     setEditingSave(true);
+    const changingPassword = Boolean(editForm.password.trim());
     const payload = {
       name: editForm.name,
       username: editForm.username,
@@ -104,6 +105,9 @@ export default function UsuariosPage() {
     const result = await updateSystemUser(id, payload);
     setEditingSave(false);
     if (!result) return;
+    if (changingPassword) {
+      addNotification('Senha do usuário alterada com sucesso.', 'success');
+    }
     cancelEdit();
   };
 
@@ -237,6 +241,11 @@ export default function UsuariosPage() {
                           onChange={(e) => setEditForm(p => ({ ...p, password: e.target.value }))}
                           placeholder="Nova senha (opcional)"
                         />
+                        {editForm.password.trim() && (
+                          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1">
+                            A senha será atualizada quando você clicar em Salvar.
+                          </p>
+                        )}
                         <input
                           type="email"
                           className="input-field text-sm"
