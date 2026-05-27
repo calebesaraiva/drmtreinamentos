@@ -239,8 +239,10 @@ export default function AnalisePage() {
   const [recusaModal, setRecusaModal] = useState(null); // { aluno, tipo }
   const [processing, setProcessing] = useState(null);
   const [recusaLoading, setRecusaLoading] = useState(false);
+  const safeStudents = Array.isArray(students) ? students : [];
+  const safeClasses = Array.isArray(classes) ? classes : [];
 
-  const filtered = students.filter(s => {
+  const filtered = safeStudents.filter(s => {
     if (filter === 'todos') return true;
     if (filter === 'pendente') return s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente';
     if (filter === 'aprovado') return s.statusCadastro === 'aprovado';
@@ -273,11 +275,11 @@ export default function AnalisePage() {
     }
   };
 
-  const pendentes = students.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length;
-  const turmaPendentes = classes
+  const pendentes = safeStudents.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length;
+  const turmaPendentes = safeClasses
     .map(turma => ({
       ...turma,
-      students: students.filter(student => String(student.turmaId) === String(turma.id)),
+      students: safeStudents.filter(student => String(student.turmaId) === String(turma.id)),
     }))
     .filter(turma => turma.students.length > 0);
 
@@ -402,10 +404,10 @@ export default function AnalisePage() {
             <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
               filter === val ? 'bg-blue-600 text-blue-100' : 'bg-gray-100 text-gray-500'
             }`}>
-              {val === 'todos' ? students.length :
-               val === 'pendente' ? students.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length :
-               val === 'aprovado' ? students.filter(s => s.statusCadastro === 'aprovado').length :
-               students.filter(s => s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado').length}
+              {val === 'todos' ? safeStudents.length :
+               val === 'pendente' ? safeStudents.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length :
+               val === 'aprovado' ? safeStudents.filter(s => s.statusCadastro === 'aprovado').length :
+               safeStudents.filter(s => s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado').length}
             </span>
           </button>
         ))}

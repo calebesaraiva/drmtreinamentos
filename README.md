@@ -90,3 +90,20 @@ npm run docker:down
 npm run build
 # Os arquivos gerados estarão na pasta /dist
 ```
+
+## Segurança de Produção
+
+- A API exige token Bearer para rotas privadas (`/api/*`, exceto health/login/rotas públicas/validação pública de certificado).
+- Defina no ambiente de produção:
+  - `AUTH_SECRET` (obrigatório, segredo forte)
+  - `AUTH_TTL_HOURS` (opcional, padrão `12`)
+  - `CORS_ALLOWED_ORIGINS` (obrigatório, ex: `https://drmtreinamentos.com`)
+
+## Smoke Test de Produção
+
+```bash
+SMOKE_BASE_URL=https://drmtreinamentos.com \
+SMOKE_USERNAME=admin \
+SMOKE_PASSWORD='sua-senha' \
+npm run smoke:prod
+```

@@ -217,6 +217,19 @@ export default function NovaTurmaManualPage() {
   const canAdvanceCompany = Boolean(company.nome.trim());
   const canAdvanceCourse = Boolean(courseInfo.cursoId && courseInfo.data && courseInfo.periodoInicio && courseInfo.periodoFim && courseInfo.local);
   const canAdvanceStudents = rows.length > 0 && invalidRows === 0;
+  const maxUnlockedStep = useMemo(() => {
+    if (step === 4) return 4;
+    if (!canAdvanceCompany) return 0;
+    if (!canAdvanceCourse) return 1;
+    if (!canAdvanceStudents) return 2;
+    return 3;
+  }, [step, canAdvanceCompany, canAdvanceCourse, canAdvanceStudents]);
+
+  useEffect(() => {
+    if (step > maxUnlockedStep && step !== 4) {
+      setStep(maxUnlockedStep);
+    }
+  }, [step, maxUnlockedStep]);
 
   const updateCourse = (field, value) => {
     setCourseInfo(prev => {
@@ -376,9 +389,18 @@ export default function NovaTurmaManualPage() {
   const StepButton = ({ index }) => (
     <button
       type="button"
-      onClick={() => setStep(index)}
+      onClick={() => {
+        if (index <= maxUnlockedStep) setStep(index);
+      }}
+      disabled={index > maxUnlockedStep}
       className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold ${
-        step === index ? 'bg-blue-700 text-white' : index < step ? 'bg-green-50 text-green-700' : 'bg-white border border-gray-200 text-gray-500'
+        step === index
+          ? 'bg-blue-700 text-white'
+          : index < step
+            ? 'bg-green-50 text-green-700'
+            : 'bg-white border border-gray-200 text-gray-500'
+      } ${
+        index > maxUnlockedStep ? 'opacity-60 cursor-not-allowed' : ''
       }`}
     >
       <span className="w-6 h-6 rounded-full bg-white/20 border border-current flex items-center justify-center text-xs">{index + 1}</span>

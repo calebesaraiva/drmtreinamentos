@@ -1,4 +1,16 @@
 const API_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const TOKEN_KEY = 'drmAuthToken';
+
+let authToken = '';
+try {
+  authToken = localStorage.getItem(TOKEN_KEY) || '';
+} catch {
+  authToken = '';
+}
+
+function authHeaders() {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
 
 async function request(path, options = {}) {
   const normalizedPath = API_URL.endsWith('/api') && path.startsWith('/api/')
@@ -8,6 +20,7 @@ async function request(path, options = {}) {
   const response = await fetch(`${API_URL}${normalizedPath}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
       ...(options.headers || {}),
     },
     ...options,
@@ -35,6 +48,7 @@ async function requestBlob(path, options = {}) {
   const response = await fetch(`${API_URL}${normalizedPath}`, {
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
       ...(options.headers || {}),
     },
     ...options,
@@ -62,6 +76,16 @@ function parseContentDispositionFilename(value = '') {
 }
 
 export const api = {
+  setToken: (token) => {
+    authToken = String(token || '');
+    try {
+      if (authToken) localStorage.setItem(TOKEN_KEY, authToken);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {
+      // noop
+    }
+  },
+  getToken: () => authToken,
   health: () => request('/api/health'),
   login: (username, password) => request('/api/auth/login', {
     method: 'POST',

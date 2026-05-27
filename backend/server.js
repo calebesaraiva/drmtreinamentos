@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,17 @@ const SMTP_PORT = Number(process.env.SMTP_PORT || 465);
 const SMTP_USER = process.env.SMTP_USER || '';
 const SMTP_PASS = process.env.SMTP_PASS || '';
 const SMTP_FROM = process.env.SMTP_FROM || (SMTP_USER ? `DRM Treinamentos <${SMTP_USER}>` : '');
+const AUTH_SECRET = process.env.AUTH_SECRET || 'change-this-secret-in-production';
+const AUTH_TTL_HOURS = Number(process.env.AUTH_TTL_HOURS || 12);
+const CORS_ALLOWED_ORIGINS = String(
+  process.env.CORS_ALLOWED_ORIGINS ||
+  process.env.PUBLIC_APP_URL ||
+  'http://localhost:5173',
+)
+  .split(',')
+  .map(item => item.trim())
+  .filter(Boolean);
+const CORS_PRIMARY_ORIGIN = CORS_ALLOWED_ORIGINS[0] || 'http://localhost:5173';
 const APP_USERS = [
   {
     id: 1,
@@ -223,9 +235,10 @@ function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': CORS_PRIMARY_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
   });
   res.end(body);
 }
@@ -234,21 +247,96 @@ function sendBuffer(res, status, buffer, contentType, filename) {
   res.writeHead(status, {
     'Content-Type': contentType,
     'Content-Disposition': `attachment; filename="${filename}"`,
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': CORS_PRIMARY_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Expose-Headers': 'Content-Disposition',
+    'Vary': 'Origin',
   });
   res.end(buffer);
 }
 
 function sendNoContent(res) {
   res.writeHead(204, {
-    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Origin': CORS_PRIMARY_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Vary': 'Origin',
   });
   res.end();
+}
+
+function base64UrlEncode(value) {
+  return Buffer.from(value)
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function base64UrlDecode(value) {
+  const normalized = String(value).replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized + '==='.slice((normalized.length + 3) % 4);
+  return Buffer.from(padded, 'base64').toString('utf8');
+}
+
+function signToken(payload) {
+  const encodedPayload = base64UrlEncode(JSON.stringify(payload));
+  const signature = createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  return `${encodedPayload}.${signature}`;
+}
+
+function verifyToken(token) {
+  const [encodedPayload, receivedSignature] = String(token || '').split('.');
+  if (!encodedPayload || !receivedSignature) return null;
+  const expectedSignature = createHmac('sha256', AUTH_SECRET).update(encodedPayload).digest('base64url');
+  const receivedBuffer = Buffer.from(receivedSignature);
+  const expectedBuffer = Buffer.from(expectedSignature);
+  if (receivedBuffer.length !== expectedBuffer.length) return null;
+  if (!timingSafeEqual(receivedBuffer, expectedBuffer)) return null;
+  try {
+    const payload = JSON.parse(base64UrlDecode(encodedPayload));
+    if (!payload?.exp || Number(payload.exp) < Math.floor(Date.now() / 1000)) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function issueAuthToken(user) {
+  const now = Math.floor(Date.now() / 1000);
+  const exp = now + (AUTH_TTL_HOURS * 3600);
+  const payload = {
+    sub: String(user.id),
+    username: user.username,
+    role: user.role,
+    name: user.name,
+    exp,
+  };
+  return {
+    token: signToken(payload),
+    expiresAt: new Date(exp * 1000).toISOString(),
+  };
+}
+
+function readBearerToken(req) {
+  const header = String(req.headers.authorization || '');
+  if (!header.toLowerCase().startsWith('bearer ')) return '';
+  return header.slice(7).trim();
+}
+
+function requireAuth(req, res) {
+  const token = readBearerToken(req);
+  if (!token) {
+    sendJson(res, 401, { error: 'Não autorizado. Faça login novamente.' });
+    return null;
+  }
+  const payload = verifyToken(token);
+  if (!payload) {
+    sendJson(res, 401, { error: 'Sessão inválida ou expirada. Faça login novamente.' });
+    return null;
+  }
+  return payload;
 }
 
 function notFound(res) {
@@ -1802,8 +1890,23 @@ const server = createServer(async (req, res) => {
       sendJson(res, 401, { error: 'Usuario ou senha invalidos.' });
       return;
     }
-    sendJson(res, 200, { user: withoutPassword(user) });
+    const auth = issueAuthToken(user);
+    sendJson(res, 200, { user: withoutPassword(user), ...auth });
     return;
+  }
+
+  if (url.pathname.startsWith('/api/')) {
+    const isPublicRoute =
+      url.pathname === '/api/health' ||
+      url.pathname === '/api/auth/login' ||
+      url.pathname === '/api/public/courses' ||
+      (parts[0] === 'api' && parts[1] === 'public') ||
+      (parts[0] === 'api' && parts[1] === 'certificates' && parts[2]);
+    if (!isPublicRoute) {
+      const authPayload = requireAuth(req, res);
+      if (!authPayload) return;
+      req.auth = authPayload;
+    }
   }
 
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {

@@ -8,6 +8,7 @@
     "api": "node backend/server.js",
     "build": "vite build",
     "preview": "vite preview",
+    "smoke:prod": "node scripts/smoke-production.js",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "prod:up": "docker compose -f docker-compose.prod.yml up -d --build",

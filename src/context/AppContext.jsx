@@ -73,6 +73,7 @@ export function AppProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
 
   useEffect(() => {
+    api.setToken(localStorage.getItem('drmAuthToken') || '');
     let ignore = false;
 
     async function loadInitialData() {
@@ -90,8 +91,13 @@ export function AppProvider({ children }) {
           setClasses(loadedClasses);
           setApiError(null);
         }
-      } catch {
+      } catch (error) {
         if (!ignore) {
+          if (error?.status === 401) {
+            setUser(null);
+            localStorage.removeItem('drmUser');
+            api.setToken('');
+          }
           setApiError('Não foi possível conectar ao servidor.');
         }
       } finally {
@@ -123,6 +129,7 @@ export function AppProvider({ children }) {
       const result = await api.login(username, password);
       setUser(result.user);
       localStorage.setItem('drmUser', JSON.stringify(result.user));
+      api.setToken(result.token);
       return { success: true };
     } catch (error) {
       const message = error?.message || 'Usuário ou senha inválidos.';
@@ -134,6 +141,7 @@ export function AppProvider({ children }) {
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('drmUser');
+    api.setToken('');
   }, []);
 
   // Courses
@@ -202,7 +210,12 @@ export function AppProvider({ children }) {
       setClasses(loadedClasses);
       setApiError(null);
       return { students: loadedStudents, courses: loadedCourses, classes: loadedClasses };
-    } catch {
+    } catch (error) {
+      if (error?.status === 401) {
+        setUser(null);
+        localStorage.removeItem('drmUser');
+        api.setToken('');
+      }
       setApiError('Não foi possível conectar ao servidor.');
       return null;
     }
