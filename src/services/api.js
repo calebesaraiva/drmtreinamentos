@@ -27,6 +27,40 @@ async function request(path, options = {}) {
   return payload;
 }
 
+async function requestBlob(path, options = {}) {
+  const normalizedPath = API_URL.endsWith('/api') && path.startsWith('/api/')
+    ? path.slice(4)
+    : path;
+
+  const response = await fetch(`${API_URL}${normalizedPath}`, {
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+    ...options,
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') || '';
+    const payload = contentType.includes('application/json')
+      ? await response.json()
+      : await response.text();
+    const error = new Error(payload?.error || 'Erro ao comunicar com o servidor.');
+    error.status = response.status;
+    throw error;
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: parseContentDispositionFilename(response.headers.get('content-disposition')),
+  };
+}
+
+function parseContentDispositionFilename(value = '') {
+  const match = value.match(/filename="([^"]+)"/i);
+  return match?.[1] || null;
+}
+
 export const api = {
   health: () => request('/api/health'),
   login: (username, password) => request('/api/auth/login', {
@@ -81,5 +115,17 @@ export const api = {
   markAllCertificatesSent: () => request('/api/students/certificates/send-all', {
     method: 'PATCH',
   }),
+  exportCertificates: (payload) => (
+    payload.action === 'email'
+      ? request('/api/students/certificates/export', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+      : requestBlob('/api/students/certificates/export', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        })
+  ),
+  downloadCertificatePdf: (studentId) => requestBlob(`/api/students/${studentId}/certificate-pdf`),
   validateCertificate: (code) => request(`/api/certificates/${encodeURIComponent(code)}`),
 };

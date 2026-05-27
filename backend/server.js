@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { Pool } from 'pg';
 import nodemailer from 'nodemailer';
 import PDFDocument from 'pdfkit';
+import JSZip from 'jszip';
 import {
   MOCK_STUDENTS,
   MOCK_COURSES,
@@ -212,6 +213,18 @@ function sendJson(res, status, payload) {
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(body);
+}
+
+function sendBuffer(res, status, buffer, contentType, filename) {
+  res.writeHead(status, {
+    'Content-Type': contentType,
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Expose-Headers': 'Content-Disposition',
+  });
+  res.end(buffer);
 }
 
 function sendNoContent(res) {
@@ -447,6 +460,11 @@ function sanitizeFileName(value = 'certificado') {
     .replace(/[^a-z0-9_-]+/gi, '-')
     .replace(/^-+|-+$/g, '')
     .toLowerCase() || 'certificado';
+}
+
+function certificateFileName(student = {}) {
+  const date = sanitizeFileName(student.periodoFim || student.data || new Date().toISOString().split('T')[0]);
+  return `${sanitizeFileName(student.nome)}-${date}-${sanitizeFileName(student.nomeCurso)}.pdf`;
 }
 
 function certificateTopics(student = {}) {
@@ -849,7 +867,7 @@ async function sendCertificateEmail(student) {
 
   const message = buildCertificateEmail(student);
   const certificatePdf = await generateCertificatePdf(student);
-  const filename = `certificado-${sanitizeFileName(student.nome)}-${sanitizeFileName(student.nomeCurso)}.pdf`;
+  const filename = certificateFileName(student);
   await mailTransport.sendMail({
     from: SMTP_FROM,
     to: student.email,
@@ -1115,10 +1133,12 @@ function createStudentEnrollment(courseId, payload) {
     cargo: String(payload.cargo).trim(),
     cursoId: course.id,
     nomeCurso: course.nomeCurso,
-    local: course.local,
-    data: course.data,
-    horarioInicio: course.horarioInicio,
+    local: payload.local || course.local,
+    data: payload.data || course.data,
+    horarioInicio: payload.horarioInicio || course.horarioInicio,
     duracao: course.duracao,
+    periodoInicio: payload.periodoInicio || payload.data || course.data,
+    periodoFim: payload.periodoFim || payload.data || course.data,
     temInstrutor: course.temInstrutor,
     instrutor: course.instrutor,
     instrutorNome: course.instrutorNome,
@@ -1289,22 +1309,12 @@ async function updateStudentStatus(id, payload) {
 
   let updated = applyStudentStatus(students[index], field, value, motivo, actor);
   if (field === 'statusCertificado' && value === 'aprovado') {
-    try {
-      const emailResult = await sendCertificateEmail(updated);
-      updated = {
-        ...updated,
-        certificadoEnviado: emailResult.sent,
-        dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : updated.dataEnvio || null,
-        certificadoEmailErro: emailResult.sent ? null : emailResult.error,
-      };
-    } catch (error) {
-      updated = {
-        ...updated,
-        certificadoEnviado: false,
-        dataEnvio: null,
-        certificadoEmailErro: error.message || 'Erro ao enviar certificado por e-mail.',
-      };
-    }
+    updated = {
+      ...updated,
+      certificadoEnviado: false,
+      dataEnvio: null,
+      certificadoEmailErro: null,
+    };
   }
   students = students.map(student => (String(student.id) === String(id) ? updated : student));
   persistData();
@@ -1343,6 +1353,82 @@ async function markCertificateSent(id) {
   students = students.map(student => (String(student.id) === String(id) ? updated : student));
   persistData();
   return { student: updated };
+}
+
+async function certificatePdfForStudent(id) {
+  const student = students.find(item => String(item.id) === String(id));
+  if (!student) return { status: 404, error: 'Aluno nao encontrado.' };
+  if (student.statusCertificado !== 'aprovado') return { status: 400, error: 'Certificado nao esta aprovado.' };
+  const pdf = await generateCertificatePdf(student);
+  return { pdf, filename: certificateFileName(student) };
+}
+
+async function exportCertificates(payload) {
+  const ids = Array.isArray(payload.studentIds) ? payload.studentIds : [];
+  const action = payload.action || 'both';
+  if (!['email', 'pdf', 'both'].includes(action)) {
+    return { status: 400, error: 'Acao invalida.' };
+  }
+  if (ids.length === 0) return { status: 400, error: 'Selecione ao menos um aluno.' };
+
+  const selected = ids
+    .map(id => students.find(student => String(student.id) === String(id)))
+    .filter(Boolean);
+  if (selected.length === 0) return { status: 404, error: 'Nenhum aluno encontrado.' };
+  const invalid = selected.find(student => student.statusCertificado !== 'aprovado');
+  if (invalid) return { status: 400, error: `Certificado nao aprovado para ${invalid.nome}.` };
+
+  const shouldEmail = action === 'email' || action === 'both';
+  const shouldPdf = action === 'pdf' || action === 'both';
+  const updatedById = new Map();
+
+  if (shouldEmail) {
+    for (const student of selected) {
+      let updated = student;
+      try {
+        const emailResult = await sendCertificateEmail(student);
+        updated = {
+          ...student,
+          certificadoEnviado: emailResult.sent,
+          dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : student.dataEnvio || null,
+          certificadoEmailErro: emailResult.sent ? null : emailResult.error,
+        };
+      } catch (error) {
+        updated = {
+          ...student,
+          certificadoEmailErro: error.message || 'Erro ao enviar certificado por e-mail.',
+        };
+      }
+      updatedById.set(String(student.id), updated);
+    }
+    students = students.map(student => updatedById.get(String(student.id)) || student);
+    persistData();
+  }
+
+  if (!shouldPdf) {
+    return {
+      json: {
+        students,
+        sent: [...updatedById.values()].filter(student => student.certificadoEnviado).length,
+      },
+    };
+  }
+
+  if (selected.length === 1) {
+    const current = updatedById.get(String(selected[0].id)) || selected[0];
+    const pdf = await generateCertificatePdf(current);
+    return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
+  }
+
+  const zip = new JSZip();
+  for (const student of selected) {
+    const current = updatedById.get(String(student.id)) || student;
+    const pdf = await generateCertificatePdf(current);
+    zip.file(certificateFileName(current), pdf);
+  }
+  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+  const date = sanitizeFileName(payload.date || new Date().toISOString().split('T')[0]);
+  return { buffer, contentType: 'application/zip', filename: `certificados-${date}.zip` };
 }
 
 function validateCertificate(code) {
@@ -1599,6 +1685,25 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === 'POST' && parts[0] === 'api' && parts[1] === 'students' && parts[2] === 'certificates' && parts[3] === 'export') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = await exportCertificates(body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    if (result.json) {
+      sendJson(res, 200, result.json);
+      return;
+    }
+    sendBuffer(res, 200, result.buffer, result.contentType, result.filename);
+    return;
+  }
+
   if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'students' && parts[3] === 'status') {
     const body = await readJson(req);
     if (!body) {
@@ -1621,6 +1726,16 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, result.student);
+    return;
+  }
+
+  if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'students' && parts[2] && parts[3] === 'certificate-pdf') {
+    const result = await certificatePdfForStudent(parts[2]);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendBuffer(res, 200, result.pdf, 'application/pdf', result.filename);
     return;
   }
 

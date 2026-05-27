@@ -196,6 +196,10 @@ const manualInitialForm = {
   telefone: '',
   empresa: '',
   cargo: '',
+  data: '',
+  horarioInicio: '',
+  periodoInicio: '',
+  periodoFim: '',
   presenca: 100,
   notaProva: 10,
   emitirCertificado: true,
@@ -245,7 +249,18 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
   ));
 
   const updateField = (field, value) => {
-    setForm(prev => ({ ...prev, [field]: value }));
+    setForm(prev => {
+      if (field !== 'cursoId') return { ...prev, [field]: value };
+      const course = courses.find(item => String(item.id) === String(value));
+      return {
+        ...prev,
+        cursoId: value,
+        data: prev.data || course?.data || '',
+        horarioInicio: prev.horarioInicio || course?.horarioInicio || '',
+        periodoInicio: prev.periodoInicio || course?.data || '',
+        periodoFim: prev.periodoFim || course?.data || '',
+      };
+    });
     setErrors(prev => ({ ...prev, [field]: null }));
   };
 
@@ -323,6 +338,10 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
       cursoId: prev.cursoId,
       empresa: prev.empresa,
       cargo: prev.cargo,
+      data: prev.data,
+      horarioInicio: prev.horarioInicio,
+      periodoInicio: prev.periodoInicio,
+      periodoFim: prev.periodoFim,
       presenca: prev.presenca,
       notaProva: prev.notaProva,
       emitirCertificado: prev.emitirCertificado,
@@ -334,6 +353,9 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
 
   const handleSubmit = async () => {
     const required = ['cursoId', 'nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+    if (!form.emitirCertificado) {
+      required.push('data', 'horarioInicio', 'periodoInicio', 'periodoFim');
+    }
     const nextErrors = required.reduce((acc, field) => {
       if (!String(form[field] ?? '').trim()) acc[field] = 'Obrigatório';
       return acc;
@@ -613,6 +635,23 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
           {input('presenca', 'Presença (%)', 'number')}
           {input('notaProva', 'Nota', 'number')}
         </div>
+
+        {!form.emitirCertificado && (
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-4">
+            <div>
+              <p className="text-sm font-bold text-amber-950">Dados do curso para análise</p>
+              <p className="text-xs text-amber-800 mt-1">
+                Como o certificado não será emitido agora, esses dados ficam salvos para aprovação na tela de Análise.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {input('data', 'Data principal do curso *', 'date')}
+              {input('horarioInicio', 'Hora de início *', 'time')}
+              {input('periodoInicio', 'Data de começo *', 'date')}
+              {input('periodoFim', 'Data de finalização *', 'date')}
+            </div>
+          </div>
+        )}
 
         <label className="flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-4 cursor-pointer">
           <input

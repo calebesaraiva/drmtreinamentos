@@ -14,6 +14,7 @@
     "prod:down": "docker compose -f docker-compose.prod.yml down"
   },
   "dependencies": {
+    "jszip": "^3.10.1",
     "lucide-react": "^0.383.0",
     "nodemailer": "^8.0.8",
     "pdfkit": "^0.18.0",

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Send, CheckCircle, Mail, Users,
-  Eye, AlertTriangle
+  Send, CheckCircle, Mail,
+  Eye, Download, Archive, Calendar, CheckSquare, Square
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
@@ -69,10 +69,14 @@ function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
 }
 
 export default function CertificadosPage() {
-  const { students, courses, markCertificadoSent, markAllCertificadosSent } = useApp();
+  const { students, courses, refreshData } = useApp();
   const [preview, setPreview] = useState(null);
-  const [confirmAll, setConfirmAll] = useState(false);
   const [filter, setFilter] = useState('todos');
+  const [dateFilter, setDateFilter] = useState('todas');
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [action, setAction] = useState('both');
+  const [processing, setProcessing] = useState(false);
+  const [statusMessage, setStatusMessage] = useState(null);
   const [layout, setLayout] = useState(() => getStoredCertificateLayout());
   const [config, setConfig] = useState(() => {
     try { return mergeCertificateConfig(JSON.parse(localStorage.getItem('drmCertConfig') || '{}')); }
@@ -104,16 +108,69 @@ export default function CertificadosPage() {
   const aprovados = students.filter(s => s.statusCertificado === 'aprovado');
   const enviados = aprovados.filter(s => s.certificadoEnviado);
   const pendentes = aprovados.filter(s => !s.certificadoEnviado);
+  const dateOptions = [...new Set(aprovados.map(s => s.periodoFim || s.data).filter(Boolean))]
+    .sort((a, b) => String(b).localeCompare(String(a)));
 
-  const display = filter === 'todos' ? aprovados : filter === 'enviado' ? enviados : pendentes;
+  const display = (filter === 'todos' ? aprovados : filter === 'enviado' ? enviados : pendentes)
+    .filter(student => dateFilter === 'todas' || (student.periodoFim || student.data) === dateFilter);
+  const selectedStudents = aprovados.filter(student => selectedIds.includes(String(student.id)));
 
-  const handleSendOne = (aluno) => {
-    markCertificadoSent(aluno.id);
+  const toggleStudent = (studentId) => {
+    const id = String(studentId);
+    setSelectedIds(prev => (
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    ));
   };
 
-  const handleSendAll = () => {
-    markAllCertificadosSent();
-    setConfirmAll(false);
+  const selectVisible = () => {
+    const visibleIds = display.map(student => String(student.id));
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+    setSelectedIds(prev => (
+      allSelected
+        ? prev.filter(id => !visibleIds.includes(id))
+        : [...new Set([...prev, ...visibleIds])]
+    ));
+  };
+
+  const downloadBlob = ({ blob, filename }) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'certificados.zip';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBatchAction = async () => {
+    if (selectedIds.length === 0) {
+      setStatusMessage({ type: 'error', text: 'Selecione ao menos um aluno.' });
+      return;
+    }
+    setProcessing(true);
+    setStatusMessage(null);
+    try {
+      const result = await api.exportCertificates({
+        studentIds: selectedIds,
+        action,
+        date: dateFilter === 'todas' ? null : dateFilter,
+      });
+      if (action === 'email') {
+        setStatusMessage({ type: 'success', text: 'Envio por e-mail processado.' });
+      } else {
+        downloadBlob(result);
+        setStatusMessage({
+          type: 'success',
+          text: selectedIds.length > 1 ? 'Arquivo ZIP gerado com os certificados.' : 'PDF do certificado gerado.',
+        });
+      }
+      await refreshData();
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error.message || 'Não foi possível processar os certificados.' });
+    } finally {
+      setProcessing(false);
+    }
   };
 
   return (
@@ -148,21 +205,69 @@ export default function CertificadosPage() {
       </div>
 
       {/* Actions */}
-      {pendentes.length > 0 && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-blue-50 border border-blue-100 rounded-xl p-4">
-          <div className="flex items-center gap-2 text-blue-800">
-            <AlertTriangle className="w-5 h-5 text-blue-500" />
-            <p className="text-sm font-medium">{pendentes.length} certificado(s) aprovado(s) aguardando envio</p>
+      <div className="card space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Filtrar por data do curso</label>
+            <select value={dateFilter} onChange={event => setDateFilter(event.target.value)} className="input-field">
+              <option value="todas">Todas as datas</option>
+              {dateOptions.map(date => (
+                <option key={date} value={date}>
+                  {new Date(`${date}T12:00`).toLocaleDateString('pt-BR')}
+                </option>
+              ))}
+            </select>
           </div>
           <button
-            onClick={() => setConfirmAll(true)}
-            className="btn-primary text-sm whitespace-nowrap w-full sm:w-auto"
+            type="button"
+            onClick={selectVisible}
+            className="btn-secondary text-sm whitespace-nowrap"
           >
-            <Users className="w-4 h-4" />
-            Enviar Todos
+            <CheckSquare className="w-4 h-4" />
+            Selecionar alunos exibidos
           </button>
         </div>
-      )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {[
+              { value: 'both', label: 'E-mail + PDF/ZIP', icon: Archive },
+              { value: 'email', label: 'Somente e-mail', icon: Mail },
+              { value: 'pdf', label: 'Somente PDF/ZIP', icon: Download },
+            ].map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAction(value)}
+                className={`rounded-lg border px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 ${
+                  action === value ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <Icon className="w-4 h-4" />
+                {label}
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={handleBatchAction}
+            disabled={processing || selectedIds.length === 0}
+            className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {processing ? 'Processando...' : `Processar ${selectedIds.length} selecionado(s)`}
+          </button>
+        </div>
+
+        {statusMessage && (
+          <div className={`rounded-xl border p-3 text-sm ${
+            statusMessage.type === 'success'
+              ? 'bg-green-50 border-green-100 text-green-700'
+              : 'bg-red-50 border-red-100 text-red-700'
+          }`}>
+            {statusMessage.text}
+          </div>
+        )}
+      </div>
 
       {/* Filter */}
       <div className="flex gap-2 flex-wrap">
@@ -198,6 +303,14 @@ export default function CertificadosPage() {
             <div key={aluno.id} className="card hover:shadow-md transition-all duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggleStudent(aluno.id)}
+                    className="text-blue-700"
+                    aria-label="Selecionar aluno"
+                  >
+                    {selectedIds.includes(String(aluno.id)) ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5" />}
+                  </button>
                   <BrandLogo className="w-12 h-10 rounded-xl border border-gray-100 flex-shrink-0" />
                   <div>
                     <p className="font-semibold text-gray-800">{aluno.nome}</p>
@@ -213,6 +326,12 @@ export default function CertificadosPage() {
                         Assinado em {formatDateTime(aluno.certificadoAutorizadoEm)}
                       </p>
                     )}
+                    {(aluno.periodoFim || aluno.data) && (
+                      <p className="text-xs text-gray-400 mt-0.5 flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {new Date(`${aluno.periodoFim || aluno.data}T12:00`).toLocaleDateString('pt-BR')}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -224,47 +343,12 @@ export default function CertificadosPage() {
                     <Eye className="w-3.5 h-3.5" />
                     Visualizar
                   </button>
-                  {!aluno.certificadoEnviado && (
-                    <button
-                      onClick={() => handleSendOne(aluno)}
-                      className="btn-primary text-xs py-1.5 px-3"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      Enviar
-                    </button>
-                  )}
                 </div>
               </div>
             </div>
           ))}
         </div>
       )}
-
-      {/* Confirm all modal */}
-      <Modal
-        isOpen={confirmAll}
-        onClose={() => setConfirmAll(false)}
-        title="Confirmar Envio em Massa"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div className="flex items-center gap-3 bg-blue-50 rounded-xl p-4">
-            <Users className="w-8 h-8 text-blue-500" />
-            <div>
-              <p className="font-semibold text-gray-800">{pendentes.length} certificados serão enviados</p>
-              <p className="text-xs text-gray-500">Os certificados aprovados serão enviados por e-mail para cada aluno.</p>
-            </div>
-          </div>
-          <p className="text-sm text-gray-600">Deseja confirmar o envio de todos os certificados aprovados e pendentes de envio?</p>
-          <div className="flex gap-3">
-            <button onClick={() => setConfirmAll(false)} className="btn-secondary flex-1">Cancelar</button>
-            <button onClick={handleSendAll} className="btn-primary flex-1">
-              <Send className="w-4 h-4" />
-              Confirmar Envio
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Preview modal */}
       <PreviewModal
