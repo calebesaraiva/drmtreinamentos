@@ -75,6 +75,7 @@ export default function CertificadosPage() {
   const [dateFilter, setDateFilter] = useState('todas');
   const [selectedIds, setSelectedIds] = useState([]);
   const [action, setAction] = useState('both');
+  const [signatureType, setSignatureType] = useState('digital');
   const [processing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [layout, setLayout] = useState(() => getStoredCertificateLayout());
@@ -154,6 +155,7 @@ export default function CertificadosPage() {
       const result = await api.exportCertificates({
         studentIds: selectedIds,
         action,
+        signatureType,
         date: dateFilter === 'todas' ? null : dateFilter,
       });
       if (action === 'email') {
@@ -229,24 +231,49 @@ export default function CertificadosPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {[
-              { value: 'both', label: 'E-mail + PDF/ZIP', icon: Archive },
-              { value: 'email', label: 'Somente e-mail', icon: Mail },
-              { value: 'pdf', label: 'Somente PDF/ZIP', icon: Download },
-            ].map(({ value, label, icon: Icon }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAction(value)}
-                className={`rounded-lg border px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 ${
-                  action === value ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {label}
-              </button>
-            ))}
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {[
+                { value: 'both', label: 'E-mail + PDF/ZIP', icon: Archive },
+                { value: 'email', label: 'Somente e-mail', icon: Mail },
+                { value: 'pdf', label: 'Somente PDF/ZIP', icon: Download },
+              ].map(({ value, label, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAction(value)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2 ${
+                    action === value ? 'bg-blue-700 text-white border-blue-700' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <Icon className="w-4 h-4" />
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Tipo de assinatura na emissão</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { value: 'digital', label: 'Assinatura digital', description: 'Inclui código de validação e registro de autorização.' },
+                  { value: 'manual', label: 'Assinatura manual', description: 'Usa assinatura gráfica/manual sem texto de validação digital.' },
+                ].map(option => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setSignatureType(option.value)}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      signatureType === option.value
+                        ? 'bg-green-50 border-green-500 ring-2 ring-green-100'
+                        : 'bg-white border-gray-200 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="block text-sm font-bold text-gray-900">{option.label}</span>
+                    <span className="block text-xs text-gray-500 mt-0.5">{option.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <button
             type="button"

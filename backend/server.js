@@ -525,6 +525,7 @@ function extractCertificateNorm(curso = '') {
 function certificatePdfValues(config = {}, student = {}) {
   const cfg = mergeCertificateConfig(config);
   const data = { ...sampleCertificateStudent, ...student };
+  const manualSignature = data.assinaturaTipo === 'manual';
   const temInstrutor = data.temInstrutor !== false;
   const instrutorNome = temInstrutor ? data.instrutorNome || data.nomeInstrutor || data.instrutor || 'Instrutor não informado' : '';
   const instrutorCargo = temInstrutor ? data.instrutorCargo || data.cargoInstrutor || data.instrutorFuncao || 'Técnico/Engenheiro responsável' : '';
@@ -552,7 +553,7 @@ function certificatePdfValues(config = {}, student = {}) {
     responsavel: data.certificadoAutorizadoPor || cfg.nomeResponsavel,
     localAssinatura: data.certificadoAssinaturaLocal || cfg.assinaturaDigitalLocal || cfg.endereco,
     assinaturaDataHora: formatDateTimeBR(data.certificadoAutorizadoEm || cfg.assinaturaDigitalAutorizadaEm),
-    assinaturaCodigo: data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
+    assinaturaCodigo: manualSignature ? '' : data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
   };
 
   const defaultTopics = certificateTopics(data).map((topic, index) => `${index + 1}. ${topic};`).join('\n');
@@ -568,7 +569,9 @@ function certificatePdfValues(config = {}, student = {}) {
     textoCertificado: renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
     dataLocal: renderCertificateTemplate(cfg.detalhesCursoModelo, templateValues),
     assinaturaResponsavel: cfg.nomeResponsavel,
-    assinaturaValidade: renderCertificateTemplate(cfg.assinaturaValidacaoModelo, templateValues),
+    assinaturaValidade: manualSignature
+      ? `Certificado assinado manualmente por ${templateValues.responsavel}.`
+      : renderCertificateTemplate(cfg.assinaturaValidacaoModelo, templateValues),
     cargoResponsavel: cfg.cargoResponsavel,
     creaResponsavel: cfg.creaResponsavel,
     instrutorNome,
@@ -687,6 +690,7 @@ function drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale) {
   }
 
   if (field.kind === 'digitalSignature') {
+    const signatureType = cfg.assinaturaTipo === 'manual' ? 'manual' : 'digital';
     const signature = configuredImageSource(cfg.assinaturaDigitalUrl);
     if (signature) {
       doc.image(signature, rect.x, rect.y, { fit: [rect.w, rect.h], align: 'center', valign: 'center' });
@@ -697,7 +701,7 @@ function drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale) {
       width: rect.w,
       align: 'center',
     });
-    doc.font('Helvetica-Bold').fontSize(Math.max(6, field.fontSize * 0.55 * scale)).text('assinatura digital', rect.x, rect.y + rect.h * 0.56, {
+    doc.font('Helvetica-Bold').fontSize(Math.max(6, field.fontSize * 0.55 * scale)).text(`assinatura ${signatureType}`, rect.x, rect.y + rect.h * 0.56, {
       width: rect.w,
       align: 'center',
     });
@@ -768,7 +772,7 @@ function drawCertificateField(doc, id, field, cfg, values, scale) {
   });
 }
 
-function generateCertificatePdf(student) {
+function generateCertificatePdf(student, options = {}) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -785,9 +789,12 @@ function generateCertificatePdf(student) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const cfg = mergeCertificateConfig(certificateSettings.config || {});
+    const cfg = {
+      ...mergeCertificateConfig(certificateSettings.config || {}),
+      assinaturaTipo: options.signatureType === 'manual' ? 'manual' : 'digital',
+    };
     const layout = mergeCertificateLayoutPdf(certificateSettings.layout || {});
-    const values = certificatePdfValues(cfg, student);
+    const values = certificatePdfValues(cfg, { ...student, assinaturaTipo: cfg.assinaturaTipo });
     const showInstructor = student?.temInstrutor !== false;
     const instructorFields = new Set(['instrutorNome', 'instrutorCargo', 'instrutorRegistro', 'instrutorTipo']);
     const scale = doc.page.width / CERTIFICATE_PAGE_WIDTH;
@@ -861,12 +868,12 @@ function buildCertificateEmail(student) {
   };
 }
 
-async function sendCertificateEmail(student) {
+async function sendCertificateEmail(student, options = {}) {
   if (!mailTransport) return { sent: false, error: 'SMTP nao configurado.' };
   if (!student.email) return { sent: false, error: 'Aluno sem e-mail cadastrado.' };
 
   const message = buildCertificateEmail(student);
-  const certificatePdf = await generateCertificatePdf(student);
+  const certificatePdf = await generateCertificatePdf(student, options);
   const filename = certificateFileName(student);
   await mailTransport.sendMail({
     from: SMTP_FROM,
@@ -1366,6 +1373,7 @@ async function certificatePdfForStudent(id) {
 async function exportCertificates(payload) {
   const ids = Array.isArray(payload.studentIds) ? payload.studentIds : [];
   const action = payload.action || 'both';
+  const signatureType = payload.signatureType === 'manual' ? 'manual' : 'digital';
   if (!['email', 'pdf', 'both'].includes(action)) {
     return { status: 400, error: 'Acao invalida.' };
   }
@@ -1386,7 +1394,7 @@ async function exportCertificates(payload) {
     for (const student of selected) {
       let updated = student;
       try {
-        const emailResult = await sendCertificateEmail(student);
+        const emailResult = await sendCertificateEmail(student, { signatureType });
         updated = {
           ...student,
           certificadoEnviado: emailResult.sent,
@@ -1416,14 +1424,14 @@ async function exportCertificates(payload) {
 
   if (selected.length === 1) {
     const current = updatedById.get(String(selected[0].id)) || selected[0];
-    const pdf = await generateCertificatePdf(current);
+    const pdf = await generateCertificatePdf(current, { signatureType });
     return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
   }
 
   const zip = new JSZip();
   for (const student of selected) {
     const current = updatedById.get(String(student.id)) || student;
-    const pdf = await generateCertificatePdf(current);
+    const pdf = await generateCertificatePdf(current, { signatureType });
     zip.file(certificateFileName(current), pdf);
   }
   const buffer = await zip.generateAsync({ type: 'nodebuffer' });
