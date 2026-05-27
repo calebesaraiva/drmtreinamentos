@@ -32,6 +32,9 @@ function formatDateTime(dateTime) {
 function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
   const [motivo, setMotivo] = useState('');
   const [custom, setCustom] = useState('');
+  const tipoLabel = safeText(tipo, 'item');
+  const tipoLower = tipoLabel.toLowerCase();
+  const nomeLabel = safeText(nome, 'registro');
 
   const handleConfirm = () => {
     const finalMotivo = motivo === 'Outro motivo' ? custom : motivo;
@@ -42,10 +45,10 @@ function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={`Recusar ${tipo}`} size="sm">
+    <Modal isOpen={isOpen} onClose={onClose} title={`Recusar ${tipoLabel}`} size="sm">
       <div className="space-y-4">
         <p className="text-sm text-gray-600">
-          Você está recusando o <strong>{tipo.toLowerCase()}</strong> de <strong>{nome}</strong>.
+          Você está recusando o <strong>{tipoLower}</strong> de <strong>{nomeLabel}</strong>.
           Selecione o motivo:
         </p>
         <div className="space-y-2">
