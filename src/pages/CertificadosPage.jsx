@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Send, CheckCircle, Mail,
   Eye, Download, Archive, Calendar, CheckSquare, Square
@@ -69,11 +69,14 @@ function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
 }
 
 export default function CertificadosPage() {
-  const { students, courses, classes, refreshData } = useApp();
+  const { students, courses, classes, refreshData, user } = useApp();
   const [preview, setPreview] = useState(null);
   const [filter, setFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('todas');
   const [classFilter, setClassFilter] = useState('todas');
+  const [companyFilter, setCompanyFilter] = useState('todas');
+  const [courseFilter, setCourseFilter] = useState('todos');
+  const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [action, setAction] = useState('both');
   const [signatureType, setSignatureType] = useState('digital');
@@ -112,11 +115,28 @@ export default function CertificadosPage() {
   const pendentes = aprovados.filter(s => !s.certificadoEnviado);
   const dateOptions = [...new Set(aprovados.map(s => s.periodoFim || s.data).filter(Boolean))]
     .sort((a, b) => String(b).localeCompare(String(a)));
+  const companyOptions = useMemo(() => [...new Set(aprovados.map(s => s.empresa).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR')), [aprovados]);
 
   const display = (filter === 'todos' ? aprovados : filter === 'enviado' ? enviados : pendentes)
     .filter(student => dateFilter === 'todas' || (student.periodoFim || student.data) === dateFilter)
-    .filter(student => classFilter === 'todas' || String(student.turmaId) === String(classFilter));
+    .filter(student => classFilter === 'todas' || String(student.turmaId) === String(classFilter))
+    .filter(student => companyFilter === 'todas' || student.empresa === companyFilter)
+    .filter(student => courseFilter === 'todos' || String(student.cursoId) === String(courseFilter))
+    .filter(student => {
+      const term = search.trim().toLowerCase();
+      if (!term) return true;
+      return [student.nome, student.cpf, student.empresa, student.nomeCurso, student.certificadoAssinaturaCodigo]
+        .some(value => String(value || '').toLowerCase().includes(term));
+    });
   const selectedStudents = aprovados.filter(student => selectedIds.includes(String(student.id)));
+  const selectedPendencies = selectedStudents.flatMap(student => {
+    const items = [];
+    if (!student.email && (action === 'email' || action === 'both')) items.push(`${student.nome}: sem e-mail; prefira baixar PDF/ZIP.`);
+    if (student.statusCertificado !== 'aprovado') items.push(`${student.nome}: certificado ainda não aprovado.`);
+    if (student.certificadoEmailErro) items.push(`${student.nome}: ${student.certificadoEmailErro}`);
+    return items;
+  });
 
   const toggleStudent = (studentId) => {
     const id = String(studentId);
@@ -159,6 +179,8 @@ export default function CertificadosPage() {
         action,
         signatureType,
         date: dateFilter === 'todas' ? null : dateFilter,
+        actor: user?.name || 'Responsável DRM',
+        actorRole: user?.role || 'responsavel',
       });
       if (action === 'email') {
         setStatusMessage({ type: 'success', text: 'Envio por e-mail processado.' });
@@ -210,7 +232,7 @@ export default function CertificadosPage() {
 
       {/* Actions */}
       <div className="card space-y-4">
-        <div className="flex flex-col lg:flex-row lg:items-end gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Selecionar turma</label>
             <select value={classFilter} onChange={event => setClassFilter(event.target.value)} className="input-field">
@@ -233,6 +255,26 @@ export default function CertificadosPage() {
               ))}
             </select>
           </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Empresa</label>
+            <select value={companyFilter} onChange={event => setCompanyFilter(event.target.value)} className="input-field">
+              <option value="todas">Todas as empresas</option>
+              {companyOptions.map(company => <option key={company} value={company}>{company}</option>)}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Curso</label>
+            <select value={courseFilter} onChange={event => setCourseFilter(event.target.value)} className="input-field">
+              <option value="todos">Todos os cursos</option>
+              {courses.map(course => <option key={course.id} value={course.id}>{course.nomeCurso}</option>)}
+            </select>
+          </div>
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Busca rápida</label>
+            <input value={search} onChange={event => setSearch(event.target.value)} className="input-field" placeholder="Aluno, CPF, empresa..." />
+          </div>
+        </div>
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={selectVisible}
@@ -305,6 +347,14 @@ export default function CertificadosPage() {
               : 'bg-red-50 border-red-100 text-red-700'
           }`}>
             {statusMessage.text}
+          </div>
+        )}
+        {selectedPendencies.length > 0 && (
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-800">
+            <p className="font-semibold mb-1">Pendências dos selecionados</p>
+            <ul className="list-disc pl-5 space-y-1">
+              {selectedPendencies.slice(0, 6).map(item => <li key={item}>{item}</li>)}
+            </ul>
           </div>
         )}
       </div>

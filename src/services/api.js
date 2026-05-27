@@ -97,6 +97,10 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }),
+  deleteTestClass: (classId, payload) => request(`/api/classes/${classId}`, {
+    method: 'DELETE',
+    body: JSON.stringify(payload),
+  }),
   createCourse: (course) => request('/api/courses', {
     method: 'POST',
     body: JSON.stringify(course),

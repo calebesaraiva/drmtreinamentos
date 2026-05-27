@@ -209,13 +209,22 @@ function updateCertificateSettings(payload) {
 
 const allowedStatusFields = new Set(['statusCadastro', 'statusCertificado']);
 const allowedStatusValues = new Set(['pendente', 'aprovado', 'recusado']);
+const privilegedRoles = new Set(['admin', 'responsavel']);
+
+function canManageCertificates(payload = {}) {
+  return privilegedRoles.has(String(payload.actorRole || '').toLowerCase());
+}
+
+function actorLabel(payload = {}) {
+  return payload.actor || 'Responsável DRM';
+}
 
 function sendJson(res, status, payload) {
   const body = JSON.stringify(payload);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end(body);
@@ -226,7 +235,7 @@ function sendBuffer(res, status, buffer, contentType, filename) {
     'Content-Type': contentType,
     'Content-Disposition': `attachment; filename="${filename}"`,
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Expose-Headers': 'Content-Disposition',
   });
@@ -236,7 +245,7 @@ function sendBuffer(res, status, buffer, contentType, filename) {
 function sendNoContent(res) {
   res.writeHead(204, {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET,POST,PATCH,OPTIONS',
+    'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
   });
   res.end();
@@ -1258,22 +1267,37 @@ async function createManualStudent(payload) {
 function classChecklist(turma) {
   const classStudents = students.filter(student => String(student.turmaId) === String(turma.id));
   const hasStudents = classStudents.length > 0;
+  const approvedStudents = classStudents.filter(student => student.statusCertificado === 'aprovado');
+  const emittedStudents = approvedStudents.filter(student => student.certificadoAssinaturaCodigo);
   const analysisDone = hasStudents && classStudents.every(student => (
     student.statusCadastro !== 'pendente' && student.statusCertificado !== 'pendente'
   ));
-  const certificatesApproved = hasStudents && classStudents.some(student => student.statusCertificado === 'aprovado');
-  const emailsSent = certificatesApproved && classStudents
-    .filter(student => student.statusCertificado === 'aprovado')
-    .every(student => student.certificadoEnviado);
+  const certificatesApproved = emittedStudents.length > 0;
+  const emailsSent = approvedStudents.length > 0 && approvedStudents.every(student => student.certificadoEnviado);
 
   return [
-    { id: 'empresa', label: 'Empresa cadastrada', status: turma.empresa?.nome ? 'concluido' : 'erro' },
-    { id: 'curso', label: 'Curso definido', status: turma.cursoId ? 'concluido' : 'erro' },
-    { id: 'alunos', label: 'Alunos cadastrados', status: hasStudents ? 'concluido' : 'pendente' },
-    { id: 'analise', label: 'Análise concluída', status: analysisDone ? 'concluido' : hasStudents ? 'pendente' : 'bloqueado' },
-    { id: 'certificados', label: 'Certificados emitidos', status: certificatesApproved ? 'concluido' : analysisDone ? 'pendente' : 'bloqueado' },
-    { id: 'emails', label: 'E-mails enviados', status: emailsSent ? 'concluido' : certificatesApproved ? 'pendente' : 'bloqueado' },
+    { id: 'empresa', label: 'Empresa cadastrada', status: turma.empresa?.nome ? 'concluido' : 'erro', motivo: turma.empresa?.nome ? 'Empresa vinculada à turma.' : 'Informe ou selecione a empresa contratante.' },
+    { id: 'curso', label: 'Curso definido', status: turma.cursoId ? 'concluido' : 'erro', motivo: turma.cursoId ? 'Curso vinculado à turma.' : 'Selecione um curso antes de avançar.' },
+    { id: 'alunos', label: 'Alunos cadastrados', status: hasStudents ? 'concluido' : 'pendente', motivo: hasStudents ? `${classStudents.length} aluno(s) cadastrados.` : 'Cadastre ou importe alunos para a turma.' },
+    { id: 'analise', label: 'Análise concluída', status: analysisDone ? 'concluido' : hasStudents ? 'pendente' : 'bloqueado', motivo: analysisDone ? 'Todos os alunos foram analisados.' : hasStudents ? 'Ainda existem alunos pendentes de aprovação/recusa.' : 'Cadastre alunos primeiro.' },
+    { id: 'certificados', label: 'Certificados emitidos', status: certificatesApproved ? 'concluido' : analysisDone ? 'pendente' : 'bloqueado', motivo: certificatesApproved ? `${emittedStudents.length} certificado(s) autorizados.` : analysisDone ? 'Emita os certificados aprovados.' : 'Conclua a análise antes da emissão.' },
+    { id: 'emails', label: 'E-mails enviados', status: emailsSent ? 'concluido' : certificatesApproved ? 'pendente' : 'bloqueado', motivo: emailsSent ? 'Todos os certificados aprovados foram enviados.' : certificatesApproved ? 'Ainda há certificados aprovados sem envio por e-mail.' : 'Autorize certificados antes do envio.' },
   ];
+}
+
+function classPendencies(turma) {
+  const classStudents = students.filter(student => String(student.turmaId) === String(turma.id));
+  const pendencies = [];
+  classStudents.forEach(student => {
+    const prefix = `${student.nome || 'Aluno sem nome'} (${student.cpf || 'sem CPF'})`;
+    if (!student.nome) pendencies.push({ studentId: student.id, tipo: 'nome', mensagem: `${prefix}: nome obrigatório ausente.` });
+    if (!student.cpf) pendencies.push({ studentId: student.id, tipo: 'cpf', mensagem: `${prefix}: CPF obrigatório ausente.` });
+    if (!student.email) pendencies.push({ studentId: student.id, tipo: 'email', mensagem: `${prefix}: sem e-mail; use baixar PDF/ZIP.` });
+    if (student.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(student.email)) pendencies.push({ studentId: student.id, tipo: 'email', mensagem: `${prefix}: e-mail inválido.` });
+    if (student.statusCertificado !== 'aprovado') pendencies.push({ studentId: student.id, tipo: 'certificado', mensagem: `${prefix}: certificado não aprovado.` });
+    if (student.certificadoEmailErro) pendencies.push({ studentId: student.id, tipo: 'envio', mensagem: `${prefix}: ${student.certificadoEmailErro}` });
+  });
+  return pendencies;
 }
 
 function enrichClass(turma) {
@@ -1286,6 +1310,7 @@ function enrichClass(turma) {
     certificadosAprovados: classStudents.filter(student => student.statusCertificado === 'aprovado').length,
     certificadosEnviados: classStudents.filter(student => student.certificadoEnviado).length,
     checklist: classChecklist(turma),
+    pendencias: classPendencies(turma),
   };
 }
 
@@ -1305,6 +1330,8 @@ function createManualClass(payload) {
   const requiredStudent = ['nome', 'cpf', 'email', 'telefone', 'cargo'];
   const invalidIndex = rows.findIndex(row => requiredStudent.some(field => !String(row[field] || '').trim()));
   if (invalidIndex !== -1) return { status: 400, error: `Aluno ${invalidIndex + 1} possui campos obrigatorios vazios.` };
+  const invalidEmailIndex = rows.findIndex(row => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(row.email || '').trim()));
+  if (invalidEmailIndex !== -1) return { status: 400, error: `Aluno ${invalidEmailIndex + 1} possui e-mail invalido.` };
 
   const cpfSet = new Set();
   for (const row of rows) {
@@ -1318,7 +1345,8 @@ function createManualClass(payload) {
     if (duplicate) return { status: 409, error: `CPF ja cadastrado para este curso: ${row.cpf}.` };
   }
 
-  const actor = payload.actor || 'Responsável DRM';
+  const actor = actorLabel(payload);
+  const actorRole = payload.actorRole || 'responsavel';
   const now = new Date().toISOString();
   const nextClassId = classes.reduce((max, turma) => Math.max(max, Number(turma.id) || 0), 0) + 1;
   const turma = {
@@ -1346,10 +1374,11 @@ function createManualClass(payload) {
     periodoFim: payload.periodoFim || payload.data || course.data,
     status: 'em_analise',
     origem: 'turma-manual',
+    ambienteTeste: Boolean(payload.ambienteTeste) || String(payload.nome || empresa.nome || '').includes('[TESTE]'),
     criadoEm: now,
     criadoPor: actor,
     historico: [
-      { tipo: 'criada', ator: actor, em: now, detalhe: `${rows.length} aluno(s) enviados para análise.` },
+      { tipo: 'criada', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} aluno(s) enviados para análise.` },
     ],
   };
 
@@ -1399,6 +1428,9 @@ function createManualClass(payload) {
 }
 
 function updateClassStudentsStatus(id, payload) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para aprovar, recusar ou alterar certificados desta turma.' };
+  }
   const turma = classes.find(item => String(item.id) === String(id));
   if (!turma) return { status: 404, error: 'Turma nao encontrada.' };
   const ids = Array.isArray(payload.studentIds) && payload.studentIds.length > 0
@@ -1409,7 +1441,8 @@ function updateClassStudentsStatus(id, payload) {
   if (!allowedStatusFields.has(field) || !allowedStatusValues.has(value)) {
     return { status: 400, error: 'Status invalido.' };
   }
-  const actor = payload.actor || 'Responsável DRM';
+  const actor = actorLabel(payload);
+  const actorRole = payload.actorRole || 'responsavel';
   const motivo = payload.motivo || (value === 'recusado' ? 'Recusado em lote pela análise da turma.' : null);
 
   students = students.map(student => {
@@ -1422,7 +1455,7 @@ function updateClassStudentsStatus(id, payload) {
         status: value === 'recusado' ? 'com_pendencias' : item.status,
         historico: [
           ...(Array.isArray(item.historico) ? item.historico : []),
-          { tipo: `${field}:${value}`, ator: actor, em: new Date().toISOString(), detalhe: `${ids.length} aluno(s).` },
+          { tipo: `${field}:${value}`, ator: actor, perfil: actorRole, em: new Date().toISOString(), quantidade: ids.length, detalhe: `${ids.length} aluno(s).` },
         ],
       }
     : item);
@@ -1431,6 +1464,21 @@ function updateClassStudentsStatus(id, payload) {
     class: enrichClass(classes.find(item => String(item.id) === String(id))),
     students,
   };
+}
+
+function deleteTestClass(id, payload = {}) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para remover turma de teste.' };
+  }
+  const turma = classes.find(item => String(item.id) === String(id));
+  if (!turma) return { status: 404, error: 'Turma nao encontrada.' };
+  if (!turma.ambienteTeste && !String(turma.nome || '').includes('[TESTE]')) {
+    return { status: 403, error: 'Por segurança, somente turmas marcadas como teste podem ser removidas por este endpoint.' };
+  }
+  classes = classes.filter(item => String(item.id) !== String(id));
+  students = students.filter(student => String(student.turmaId) !== String(id));
+  persistData();
+  return { ok: true, removedClassId: id };
 }
 
 function courseStudents(courseId) {
@@ -1555,6 +1603,9 @@ async function certificatePdfForStudent(id) {
 }
 
 async function exportCertificates(payload) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para emitir, enviar e-mail ou baixar certificados em lote.' };
+  }
   const ids = Array.isArray(payload.studentIds) ? payload.studentIds : [];
   const action = payload.action || 'both';
   const signatureType = payload.signatureType === 'manual' ? 'manual' : 'digital';
@@ -1573,6 +1624,9 @@ async function exportCertificates(payload) {
   const shouldEmail = action === 'email' || action === 'both';
   const shouldPdf = action === 'pdf' || action === 'both';
   const updatedById = new Map();
+  const actor = actorLabel(payload);
+  const actorRole = payload.actorRole || 'responsavel';
+  const now = new Date().toISOString();
 
   if (shouldEmail) {
     for (const student of selected) {
@@ -1594,8 +1648,28 @@ async function exportCertificates(payload) {
       updatedById.set(String(student.id), updated);
     }
     students = students.map(student => updatedById.get(String(student.id)) || student);
-    persistData();
   }
+
+  const affectedClassIds = [...new Set(selected.map(student => student.turmaId).filter(Boolean).map(String))];
+  if (affectedClassIds.length) {
+    classes = classes.map(turma => affectedClassIds.includes(String(turma.id))
+      ? {
+          ...turma,
+          historico: [
+            ...(Array.isArray(turma.historico) ? turma.historico : []),
+            {
+              tipo: shouldEmail && shouldPdf ? 'certificados:email_zip' : shouldEmail ? 'certificados:email' : 'certificados:download',
+              ator: actor,
+              perfil: actorRole,
+              em: now,
+              quantidade: selected.filter(student => String(student.turmaId) === String(turma.id)).length,
+              detalhe: `${selected.length} certificado(s) processados em lote.`,
+            },
+          ],
+        }
+      : turma);
+  }
+  persistData();
 
   if (!shouldPdf) {
     return {
@@ -1844,6 +1918,17 @@ const server = createServer(async (req, res) => {
       return;
     }
     const result = updateClassStudentsStatus(parts[2], body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'classes' && parts[2] && !parts[3]) {
+    const body = await readJson(req);
+    const result = deleteTestClass(parts[2], body || {});
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;

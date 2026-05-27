@@ -314,8 +314,9 @@ export function AppProvider({ children }) {
   // Students
   const addManualClass = useCallback(async (payload) => {
     const actorName = user?.name || 'Responsável DRM';
+    const actorRole = user?.role || 'responsavel';
     try {
-      const result = await api.createManualClass({ ...payload, actor: actorName });
+      const result = await api.createManualClass({ ...payload, actor: actorName, actorRole });
       setClasses(prev => [...prev, result.class]);
       setStudents(prev => [...prev, ...result.students]);
       setApiError(null);
@@ -334,8 +335,9 @@ export function AppProvider({ children }) {
 
   const updateClassStudentsStatus = useCallback(async (classId, payload) => {
     const actorName = user?.name || 'Responsável DRM';
+    const actorRole = user?.role || 'responsavel';
     try {
-      const result = await api.updateClassStudentsStatus(classId, { ...payload, actor: actorName });
+      const result = await api.updateClassStudentsStatus(classId, { ...payload, actor: actorName, actorRole });
       setStudents(result.students);
       setClasses(prev => prev.map(item => String(item.id) === String(classId) ? result.class : item));
       setApiError(null);

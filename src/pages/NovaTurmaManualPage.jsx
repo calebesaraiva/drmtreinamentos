@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import {
-  AlertTriangle, Building2, CheckCircle, ChevronRight, FileSpreadsheet,
-  Loader2, Plus, Trash2, Users
+  AlertTriangle, Building2, CheckCircle, ChevronRight, Download, FileSpreadsheet,
+  Loader2, Plus, Trash2, Users, XCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -25,6 +25,11 @@ const emptyStudent = () => ({
   telefone: '',
   cargo: '',
 });
+const studentFields = ['nome', 'cpf', 'email', 'telefone', 'cargo'];
+const templateRows = [
+  ['nome', 'CPF', 'e-mail', 'telefone', 'cargo'],
+  ['Maria Silva', '000.000.000-00', 'maria@email.com', '(11) 99999-9999', 'Operador'],
+];
 
 function normalizeHeader(value) {
   return String(value || '')
@@ -58,6 +63,81 @@ function validEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
 }
 
+function validateRows(list) {
+  const cpfCounts = list.reduce((acc, row) => {
+    const cpf = String(row.cpf || '').replace(/\D/g, '');
+    if (cpf) acc[cpf] = (acc[cpf] || 0) + 1;
+    return acc;
+  }, {});
+  return list.map(row => {
+    const errors = {};
+    studentFields.forEach(field => {
+      if (!String(row[field] || '').trim()) errors[field] = 'Obrigatório';
+    });
+    const cpf = String(row.cpf || '').replace(/\D/g, '');
+    if (cpf && cpfCounts[cpf] > 1) errors.cpf = 'CPF duplicado';
+    if (row.email && !validEmail(row.email)) errors.email = 'E-mail inválido';
+    return errors;
+  });
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let current = '';
+  let line = [];
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if ((char === ',' || char === ';' || char === '\t') && !quoted) {
+      line.push(current);
+      current = '';
+    } else if ((char === '\n' || char === '\r') && !quoted) {
+      if (char === '\r' && next === '\n') index += 1;
+      line.push(current);
+      if (line.some(value => String(value).trim())) rows.push(line);
+      line = [];
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  line.push(current);
+  if (line.some(value => String(value).trim())) rows.push(line);
+  return rows;
+}
+
+function rowsToObjects(rawRows) {
+  if (!rawRows.length) return { rows: [], missing: ['nome', 'CPF', 'e-mail', 'telefone', 'cargo'] };
+  const headers = rawRows[0].map(normalizeHeader);
+  const required = ['nome', 'cpf', 'email', 'telefone', 'cargo'];
+  const aliases = {
+    nome: ['nome', 'nomecompleto', 'aluno', 'participante'],
+    cpf: ['cpf', 'documento'],
+    email: ['email', 'emailaluno', 'emaildoaluno'],
+    telefone: ['telefone', 'celular', 'whatsapp'],
+    cargo: ['cargo', 'funcao'],
+  };
+  const indexes = Object.fromEntries(required.map(field => [
+    field,
+    headers.findIndex(header => aliases[field].includes(header)),
+  ]));
+  const missing = required.filter(field => indexes[field] === -1);
+  const rows = rawRows.slice(1).map(values => {
+    const object = {};
+    required.forEach(field => {
+      object[field] = values[indexes[field]] ?? '';
+    });
+    return mapImportedRow(object);
+  }).filter(row => studentFields.some(field => String(row[field] || '').trim()));
+  return { rows, missing };
+}
+
 function formatDate(date) {
   if (!date) return '-';
   return new Date(`${date}T12:00`).toLocaleDateString('pt-BR');
@@ -73,6 +153,8 @@ export default function NovaTurmaManualPage() {
   const [rows, setRows] = useState([emptyStudent(), emptyStudent(), emptyStudent()]);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+  const [importPreview, setImportPreview] = useState(null);
+  const [studentPage, setStudentPage] = useState(1);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -95,6 +177,17 @@ export default function NovaTurmaManualPage() {
     localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
   }, [step, companyMode, companySearch, company, courseInfo, rows]);
 
+  useEffect(() => {
+    const warnBeforeExit = (event) => {
+      const hasDraft = company.nome || courseInfo.cursoId || rows.some(row => studentFields.some(field => row[field]));
+      if (!hasDraft || step === 4) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeExit);
+    return () => window.removeEventListener('beforeunload', warnBeforeExit);
+  }, [company, courseInfo, rows, step]);
+
   const registeredCompanies = useMemo(() => {
     const map = new Map();
     const add = (nome, extra = {}) => {
@@ -113,26 +206,14 @@ export default function NovaTurmaManualPage() {
   ));
   const selectedCourse = courses.find(course => String(course.id) === String(courseInfo.cursoId));
 
-  const rowErrors = useMemo(() => {
-    const cpfCounts = rows.reduce((acc, row) => {
-      const cpf = String(row.cpf || '').replace(/\D/g, '');
-      if (cpf) acc[cpf] = (acc[cpf] || 0) + 1;
-      return acc;
-    }, {});
-    return rows.map(row => {
-      const errors = {};
-      ['nome', 'cpf', 'email', 'telefone', 'cargo'].forEach(field => {
-        if (!String(row[field] || '').trim()) errors[field] = 'Obrigatório';
-      });
-      const cpf = String(row.cpf || '').replace(/\D/g, '');
-      if (cpf && cpfCounts[cpf] > 1) errors.cpf = 'CPF duplicado';
-      if (row.email && !validEmail(row.email)) errors.email = 'E-mail inválido';
-      return errors;
-    });
-  }, [rows]);
+  const rowErrors = useMemo(() => validateRows(rows), [rows]);
 
   const validRows = rowErrors.filter(errors => Object.keys(errors).length === 0).length;
   const invalidRows = rows.length - validRows;
+  const pageSize = 25;
+  const totalStudentPages = Math.max(1, Math.ceil(rows.length / pageSize));
+  const visibleOffset = (studentPage - 1) * pageSize;
+  const visibleRows = rows.slice(visibleOffset, visibleOffset + pageSize);
   const canAdvanceCompany = Boolean(company.nome.trim());
   const canAdvanceCourse = Boolean(courseInfo.cursoId && courseInfo.data && courseInfo.periodoInicio && courseInfo.periodoFim && courseInfo.local);
   const canAdvanceStudents = rows.length > 0 && invalidRows === 0;
@@ -161,7 +242,7 @@ export default function NovaTurmaManualPage() {
     const text = event.clipboardData.getData('text');
     if (!text.includes('\t') && !text.includes('\n')) return;
     event.preventDefault();
-    const fields = ['nome', 'cpf', 'email', 'telefone', 'cargo'];
+    const fields = studentFields;
     const startIndex = fields.indexOf(startField);
     const rowIndex = rows.findIndex(row => row.id === rowId);
     const pasted = text.trim().split(/\r?\n/).map(line => line.split('\t'));
@@ -177,16 +258,86 @@ export default function NovaTurmaManualPage() {
       });
       return next;
     });
+    setStudentPage(Math.ceil((rowIndex + pasted.length + 1) / pageSize));
   };
 
   const importFile = async (file) => {
     if (!file) return;
-    const data = await file.arrayBuffer();
-    const workbook = XLSX.read(data, { type: 'array' });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
-    const imported = json.map(mapImportedRow).filter(row => Object.values(row).some(Boolean));
-    if (imported.length > 0) setRows(imported);
+    setMessage(null);
+    setImportPreview(null);
+    try {
+      const extension = file.name.split('.').pop()?.toLowerCase();
+      let rawRows = [];
+      if (extension === 'xls') {
+        throw new Error('Arquivos .xls antigos foram desativados por segurança. Salve como .xlsx ou .csv e importe novamente.');
+      }
+      if (extension === 'csv') {
+        rawRows = parseCsv(await file.text());
+      } else if (extension === 'xlsx') {
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(await file.arrayBuffer());
+        const sheet = workbook.worksheets[0];
+        if (!sheet) throw new Error('Arquivo vazio. Confira se a planilha possui uma aba com alunos.');
+        sheet.eachRow({ includeEmpty: false }, row => {
+          rawRows.push(row.values.slice(1).map(value => {
+            if (value && typeof value === 'object') return value.text || value.result || value.hyperlink || '';
+            return value ?? '';
+          }));
+        });
+      } else {
+        throw new Error('Formato não suportado. Use .csv ou .xlsx.');
+      }
+
+      if (rawRows.length < 2) throw new Error('Arquivo vazio ou sem alunos para importar.');
+      const parsed = rowsToObjects(rawRows);
+      if (parsed.missing.length) throw new Error(`Coluna obrigatória ausente: ${parsed.missing.join(', ')}.`);
+      if (!parsed.rows.length) throw new Error('Nenhum aluno encontrado no arquivo.');
+      const errors = validateRows(parsed.rows);
+      setImportPreview({
+        fileName: file.name,
+        rows: parsed.rows,
+        errors,
+        valid: errors.filter(item => Object.keys(item).length === 0).length,
+      });
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message || 'Erro ao importar arquivo.' });
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const applyImportPreview = () => {
+    if (!importPreview) return;
+    setRows(importPreview.rows);
+    setStudentPage(1);
+    setImportPreview(null);
+    setMessage({ type: 'success', text: `${importPreview.rows.length} aluno(s) importados para revisão.` });
+  };
+
+  const downloadBlob = (blob, filename) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const downloadCsvTemplate = () => {
+    const csv = templateRows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';')).join('\n');
+    downloadBlob(new Blob([csv], { type: 'text/csv;charset=utf-8' }), 'modelo-alunos-drm.csv');
+  };
+
+  const downloadExcelTemplate = async () => {
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('Alunos');
+    templateRows.forEach(row => sheet.addRow(row));
+    sheet.getRow(1).font = { bold: true };
+    sheet.columns = [{ width: 28 }, { width: 18 }, { width: 28 }, { width: 18 }, { width: 18 }];
+    const buffer = await workbook.xlsx.writeBuffer();
+    downloadBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'modelo-alunos-drm.xlsx');
   };
 
   const finalize = async () => {
@@ -197,6 +348,7 @@ export default function NovaTurmaManualPage() {
         empresa: company,
         ...courseInfo,
         alunos: rows,
+        ambienteTeste: company.nome.includes('[TESTE]'),
       });
       if (result) {
         localStorage.removeItem(DRAFT_KEY);
@@ -216,6 +368,8 @@ export default function NovaTurmaManualPage() {
     setCompany(emptyCompany);
     setCourseInfo(emptyCourseInfo);
     setRows([emptyStudent(), emptyStudent(), emptyStudent()]);
+    setImportPreview(null);
+    setStudentPage(1);
     setMessage(null);
   };
 
@@ -341,11 +495,51 @@ export default function NovaTurmaManualPage() {
               <p className="text-xs text-gray-500">Cole dados do Excel direto na grade ou importe um arquivo.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={event => importFile(event.target.files?.[0])} />
+              <input ref={fileInputRef} type="file" accept=".xlsx,.csv,.xls" className="hidden" onChange={event => importFile(event.target.files?.[0])} />
               <button onClick={() => fileInputRef.current?.click()} className="btn-secondary text-sm"><FileSpreadsheet className="w-4 h-4" />Importar lista de alunos</button>
+              <button onClick={downloadCsvTemplate} className="btn-secondary text-sm"><Download className="w-4 h-4" />Modelo CSV</button>
+              <button onClick={downloadExcelTemplate} className="btn-secondary text-sm"><Download className="w-4 h-4" />Modelo Excel</button>
               <button onClick={() => setRows(prev => [...prev, emptyStudent()])} className="btn-primary text-sm"><Plus className="w-4 h-4" />Adicionar linha</button>
             </div>
           </div>
+
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+            Colunas aceitas: <strong>nome, CPF, e-mail, telefone e cargo</strong>. Arquivos .xlsx e .csv abrem em prévia antes de aplicar; .xls antigo fica bloqueado por segurança.
+          </div>
+
+          {importPreview && (
+            <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                  <p className="font-bold text-gray-900">Prévia da importação</p>
+                  <p className="text-sm text-gray-500">{importPreview.fileName}: {importPreview.rows.length} registro(s), {importPreview.valid} válido(s), {importPreview.rows.length - importPreview.valid} com erro.</p>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setImportPreview(null)} className="btn-secondary text-sm"><XCircle className="w-4 h-4" />Cancelar</button>
+                  <button onClick={applyImportPreview} className="btn-primary text-sm"><CheckCircle className="w-4 h-4" />Aplicar importação</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto max-h-80">
+                <table className="w-full min-w-[820px] text-xs">
+                  <thead><tr className="text-left text-gray-500 uppercase">{['linha', ...studentFields, 'erros'].map(h => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+                  <tbody>
+                    {importPreview.rows.slice(0, 50).map((row, index) => {
+                      const errors = importPreview.errors[index] || {};
+                      return (
+                        <tr key={row.id} className="border-t border-gray-100">
+                          <td className="p-2">{index + 2}</td>
+                          {studentFields.map(field => <td key={field} className="p-2">{row[field] || '-'}</td>)}
+                          <td className={`p-2 ${Object.keys(errors).length ? 'text-red-600' : 'text-green-700'}`}>
+                            {Object.entries(errors).map(([field, error]) => `${field}: ${error}`).join('; ') || 'OK'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-gray-50 p-3 text-center"><p className="text-2xl font-bold">{rows.length}</p><p className="text-xs text-gray-500">Total</p></div>
@@ -355,19 +549,19 @@ export default function NovaTurmaManualPage() {
 
           <div className="overflow-x-auto">
             <table className="w-full min-w-[880px] text-sm">
-              <thead><tr className="text-left text-xs text-gray-500 uppercase">{['nome', 'cpf', 'email', 'telefone', 'cargo', ''].map(h => <th key={h} className="p-2">{h}</th>)}</tr></thead>
+              <thead><tr className="text-left text-xs text-gray-500 uppercase">{[...studentFields, ''].map(h => <th key={h} className="p-2">{h}</th>)}</tr></thead>
               <tbody>
-                {rows.map((row, index) => (
+                {visibleRows.map((row, index) => (
                   <tr key={row.id} className="border-t border-gray-100">
-                    {['nome', 'cpf', 'email', 'telefone', 'cargo'].map(field => (
+                    {studentFields.map(field => (
                       <td key={field} className="p-2">
                         <input
                           value={row[field]}
                           onChange={event => updateRow(row.id, field, event.target.value)}
                           onPaste={event => handlePaste(event, row.id, field)}
-                          className={`input-field text-sm ${rowErrors[index]?.[field] ? 'border-red-300 bg-red-50' : ''}`}
+                          className={`input-field text-sm ${rowErrors[visibleOffset + index]?.[field] ? 'border-red-300 bg-red-50' : ''}`}
                         />
-                        {rowErrors[index]?.[field] && <p className="text-[10px] text-red-600 mt-1">{rowErrors[index][field]}</p>}
+                        {rowErrors[visibleOffset + index]?.[field] && <p className="text-[10px] text-red-600 mt-1">{rowErrors[visibleOffset + index][field]}</p>}
                       </td>
                     ))}
                     <td className="p-2">
@@ -378,6 +572,15 @@ export default function NovaTurmaManualPage() {
               </tbody>
             </table>
           </div>
+          {rows.length > pageSize && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-sm">
+              <p className="text-gray-500">Mostrando {visibleOffset + 1}-{Math.min(rows.length, visibleOffset + pageSize)} de {rows.length} alunos.</p>
+              <div className="flex gap-2">
+                <button disabled={studentPage === 1} onClick={() => setStudentPage(prev => Math.max(1, prev - 1))} className="btn-secondary text-sm disabled:opacity-50">Anterior</button>
+                <button disabled={studentPage === totalStudentPages} onClick={() => setStudentPage(prev => Math.min(totalStudentPages, prev + 1))} className="btn-secondary text-sm disabled:opacity-50">Próxima</button>
+              </div>
+            </div>
+          )}
           <div className="flex justify-between"><button onClick={() => setStep(1)} className="btn-secondary">Voltar</button><button disabled={!canAdvanceStudents} onClick={() => setStep(3)} className="btn-primary disabled:opacity-50">Revisar turma</button></div>
         </div>
       )}
