@@ -1141,6 +1141,87 @@ function createStudentEnrollment(courseId, payload) {
   return { student };
 }
 
+async function createManualStudent(payload) {
+  const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
+  if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
+
+  const required = ['nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+  const missing = required.filter(field => !payload[field] || String(payload[field]).trim() === '');
+  if (missing.length > 0) {
+    return { status: 400, error: `Campos obrigatorios: ${missing.join(', ')}` };
+  }
+
+  const duplicate = students.find(student => (
+    String(student.cursoId) === String(course.id) &&
+    String(student.cpf || '').replace(/\D/g, '') === String(payload.cpf || '').replace(/\D/g, '')
+  ));
+  if (duplicate) return { status: 409, error: 'CPF ja cadastrado para este curso.' };
+
+  const actor = payload.actor || 'Responsável DRM';
+  const emitirCertificado = payload.emitirCertificado !== false;
+  const now = new Date().toISOString();
+  const nextId = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
+  let student = {
+    id: nextId,
+    nome: String(payload.nome).trim(),
+    cpf: String(payload.cpf).trim(),
+    email: String(payload.email).trim(),
+    telefone: String(payload.telefone).trim(),
+    empresa: String(payload.empresa).trim(),
+    cargo: String(payload.cargo).trim(),
+    cursoId: course.id,
+    nomeCurso: course.nomeCurso,
+    local: course.local,
+    data: course.data,
+    horarioInicio: course.horarioInicio,
+    duracao: course.duracao,
+    temInstrutor: course.temInstrutor,
+    instrutor: course.instrutor,
+    instrutorNome: course.instrutorNome,
+    instrutorCargo: course.instrutorCargo,
+    instrutorRegistro: course.instrutorRegistro,
+    statusCadastro: 'aprovado',
+    statusCertificado: emitirCertificado ? 'aprovado' : 'pendente',
+    certificadoEnviado: false,
+    dataEnvio: null,
+    presente: true,
+    presenca: Number(payload.presenca || 100),
+    notaProva: Number(payload.notaProva || 10),
+    foto: null,
+    motivoRecusa: null,
+    origemCadastro: 'manual',
+    inscritoEm: now,
+    chamadaRealizadaEm: now,
+    chamadaPor: actor,
+  };
+
+  if (emitirCertificado) {
+    student = {
+      ...student,
+      ...buildCertificateAuthorization(actor),
+    };
+
+    try {
+      const emailResult = await sendCertificateEmail(student);
+      student = {
+        ...student,
+        certificadoEnviado: emailResult.sent,
+        dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : null,
+        certificadoEmailErro: emailResult.sent ? null : emailResult.error,
+      };
+    } catch (error) {
+      student = {
+        ...student,
+        certificadoEmailErro: error.message || 'Erro ao enviar certificado por e-mail.',
+      };
+    }
+  }
+
+  students = [...students, student];
+  persistData();
+  return { student };
+}
+
 function courseStudents(courseId) {
   const course = courses.find(item => String(item.id) === String(courseId));
   if (!course) return { status: 404, error: 'Curso nao encontrado.' };
@@ -1440,6 +1521,21 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 201, result.course);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/students/manual') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = await createManualStudent(body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 201, result.student);
     return;
   }
 

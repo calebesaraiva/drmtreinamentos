@@ -307,6 +307,33 @@ export function AppProvider({ children }) {
   }, [addNotification, user]);
 
   // Students
+  const addManualStudent = useCallback(async (payload) => {
+    const actorName = user?.name || 'Responsável DRM';
+    try {
+      const newStudent = await api.createManualStudent({ ...payload, actor: actorName });
+      setStudents(prev => [...prev, newStudent]);
+      setApiError(null);
+      addNotification(
+        newStudent.statusCertificado === 'aprovado'
+          ? 'Aluno cadastrado manualmente com certificado assinado.'
+          : 'Aluno cadastrado manualmente com sucesso.',
+        'success',
+      );
+      if (newStudent.statusCertificado === 'aprovado' && !newStudent.certificadoEnviado && newStudent.certificadoEmailErro) {
+        addNotification(newStudent.certificadoEmailErro, 'warning');
+      }
+      return newStudent;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível cadastrar aluno manualmente.', 'warning');
+      return null;
+    }
+  }, [addNotification, user]);
+
   const updateStudentStatus = useCallback(async (studentId, field, value, motivo = null) => {
     const actorName = user?.name || 'Responsável DRM';
 
@@ -389,7 +416,7 @@ export function AppProvider({ children }) {
 
   const value = {
     user, login, logout,
-    students, setStudents, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
+    students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,
     sidebarOpen, setSidebarOpen,

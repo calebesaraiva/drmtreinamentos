@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, Award, ClipboardCheck, QrCode,
   TrendingUp, AlertTriangle, CheckCircle, Clock,
-  ArrowRight, BookOpen
+  ArrowRight, BookOpen, UserPlus
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -152,6 +152,13 @@ export default function Dashboard() {
           >
             <QrCode className="w-4 h-4" />
             Novo QR Code
+          </button>
+          <button
+            onClick={() => navigate('/alunos?manual=1')}
+            className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5"
+          >
+            <UserPlus className="w-4 h-4" />
+            Cadastro Manual
           </button>
         </div>
       </div>

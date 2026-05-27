@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Users, ClipboardCheck,
   Send, Settings, BarChart3, LogOut, X, ListChecks,
-  ChevronRight, BookOpenCheck
+  ChevronRight, BookOpenCheck, UserPlus
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import BrandLogo from './BrandLogo';
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/cronograma', icon: BookOpenCheck, label: 'Cronograma' },
   { to: '/chamada', icon: ListChecks, label: 'Chamada' },
   { to: '/alunos', icon: Users, label: 'Alunos' },
+  { to: '/alunos?manual=1', icon: UserPlus, label: 'Cadastro Manual', highlight: true },
   { to: '/analise', icon: ClipboardCheck, label: 'Análise' },
   { to: '/certificados', icon: Send, label: 'Enviar Certificados' },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
@@ -81,14 +82,16 @@ export default function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 py-4 overflow-y-auto">
           <p className="px-4 text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2">Menu</p>
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {navItems.map(({ to, icon: Icon, label, highlight }) => (
             <NavLink
               key={to}
               to={to}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-all duration-200 group ${
-                  isActive
+                  highlight
+                    ? 'text-white bg-blue-800/70 hover:bg-blue-700 border border-blue-700/70'
+                    : isActive
                     ? 'bg-blue-700 text-white shadow-sm'
                     : 'text-blue-200 hover:bg-blue-800 hover:text-white'
                 }`

@@ -50,6 +50,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
+  createManualStudent: (payload) => request('/api/students/manual', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   createCourse: (course) => request('/api/courses', {
     method: 'POST',
     body: JSON.stringify(course),

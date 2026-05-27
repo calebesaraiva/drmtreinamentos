@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, User, Building2, Phone, Mail,
   BookOpen, MapPin, Calendar, ChevronDown, ChevronUp, X,
-  CheckCircle, Loader2, XCircle
+  CheckCircle, Loader2, XCircle, Plus, Award, Save
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import Modal from '../components/Modal';
@@ -188,8 +189,153 @@ function InfoItem({ icon: Icon, label, value }) {
   );
 }
 
+const manualInitialForm = {
+  cursoId: '',
+  nome: '',
+  cpf: '',
+  email: '',
+  telefone: '',
+  empresa: '',
+  cargo: '',
+  presenca: 100,
+  notaProva: 10,
+  emitirCertificado: true,
+};
+
+function ManualStudentModal({ isOpen, onClose, courses, onSubmit, loading }) {
+  const [form, setForm] = useState(manualInitialForm);
+  const [errors, setErrors] = useState({});
+  const activeCourses = courses.filter(course => course.status !== 'inativo');
+  const selectedCourse = courses.find(course => String(course.id) === String(form.cursoId));
+
+  const updateField = (field, value) => {
+    setForm(prev => ({ ...prev, [field]: value }));
+    setErrors(prev => ({ ...prev, [field]: null }));
+  };
+
+  const handleClose = () => {
+    if (loading) return;
+    setForm(manualInitialForm);
+    setErrors({});
+    onClose();
+  };
+
+  const handleSubmit = async () => {
+    const required = ['cursoId', 'nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+    const nextErrors = required.reduce((acc, field) => {
+      if (!String(form[field] ?? '').trim()) acc[field] = 'Obrigatório';
+      return acc;
+    }, {});
+
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    const created = await onSubmit({
+      ...form,
+      presenca: Number(form.presenca || 100),
+      notaProva: Number(form.notaProva || 10),
+    });
+    if (created) handleClose();
+  };
+
+  const input = (field, label, type = 'text', placeholder = '') => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <input
+        type={type}
+        value={form[field]}
+        onChange={event => updateField(field, event.target.value)}
+        placeholder={placeholder}
+        className={`input-field ${errors[field] ? 'border-red-300 focus:ring-red-200' : ''}`}
+      />
+      {errors[field] && <p className="text-xs text-red-500 mt-1">{errors[field]}</p>}
+    </div>
+  );
+
+  return (
+    <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
+      <div className="space-y-5">
+        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Award className="w-5 h-5 text-blue-700 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-blue-950">Cadastro direto com validação</p>
+              <p className="text-xs text-blue-700 mt-1">
+                O aluno entra aprovado, presente no curso selecionado e, se desejar, já recebe certificado autenticado e assinado.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Curso *</label>
+          <select
+            value={form.cursoId}
+            onChange={event => updateField('cursoId', event.target.value)}
+            className={`input-field ${errors.cursoId ? 'border-red-300 focus:ring-red-200' : ''}`}
+          >
+            <option value="">Selecione um curso</option>
+            {activeCourses.map(course => (
+              <option key={course.id} value={course.id}>
+                {course.nomeCurso} - {course.data ? new Date(course.data + 'T12:00').toLocaleDateString('pt-BR') : 'sem data'}
+              </option>
+            ))}
+          </select>
+          {errors.cursoId && <p className="text-xs text-red-500 mt-1">{errors.cursoId}</p>}
+          {selectedCourse && (
+            <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
+              <span>{selectedCourse.local}</span>
+              <span>{selectedCourse.duracao}</span>
+              <span>{selectedCourse.empresaContratante}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
+          {input('cpf', 'CPF *', 'text', '000.000.000-00')}
+          {input('email', 'E-mail *', 'email', 'aluno@email.com')}
+          {input('telefone', 'Telefone *', 'text', '(00) 00000-0000')}
+          {input('empresa', 'Empresa *', 'text', 'Empresa do aluno')}
+          {input('cargo', 'Cargo/Função *', 'text', 'Função no treinamento')}
+          {input('presenca', 'Presença (%)', 'number')}
+          {input('notaProva', 'Nota', 'number')}
+        </div>
+
+        <label className="flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.emitirCertificado}
+            onChange={event => updateField('emitirCertificado', event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-bold text-green-900">Emitir certificado agora</span>
+            <span className="block text-xs text-green-700 mt-1">
+              Gera código de validação público, assinatura digital e tenta enviar o PDF por e-mail automaticamente.
+            </span>
+          </span>
+        </label>
+
+        <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
+          <button type="button" onClick={handleClose} disabled={loading} className="btn-secondary disabled:opacity-60">
+            Cancelar
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {loading ? 'Cadastrando...' : 'Cadastrar e validar'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export default function AlunosPage() {
-  const { students, updateStudentStatus } = useApp();
+  const { students, courses, addManualStudent, updateStudentStatus } = useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [filterCurso, setFilterCurso] = useState('todos');
@@ -197,6 +343,12 @@ export default function AlunosPage() {
   const [sortField, setSortField] = useState('nome');
   const [sortDir, setSortDir] = useState('asc');
   const [processing, setProcessing] = useState(null);
+  const [manualOpen, setManualOpen] = useState(() => searchParams.get('manual') === '1');
+  const [manualSaving, setManualSaving] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get('manual') === '1') setManualOpen(true);
+  }, [searchParams]);
 
   const cursos = [...new Set(students.map(s => s.nomeCurso))];
 
@@ -253,6 +405,27 @@ export default function AlunosPage() {
     }
   };
 
+  const handleManualSubmit = async (payload) => {
+    setManualSaving(true);
+    try {
+      return await addManualStudent(payload);
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
+  const openManualModal = () => {
+    setManualOpen(true);
+    setSearchParams({ manual: '1' });
+  };
+
+  const closeManualModal = () => {
+    setManualOpen(false);
+    if (searchParams.get('manual') === '1') {
+      setSearchParams({});
+    }
+  };
+
   const SortIcon = ({ field }) => {
     if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
     return sortDir === 'asc' ? <ChevronUp className="w-3 h-3 text-blue-500" /> : <ChevronDown className="w-3 h-3 text-blue-500" />;
@@ -262,7 +435,7 @@ export default function AlunosPage() {
     <div className="space-y-5">
       {/* Filters */}
       <div className="card">
-        <div className="flex flex-col sm:flex-row gap-3">
+        <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -296,6 +469,14 @@ export default function AlunosPage() {
             <option value="todos">Todos os cursos</option>
             {cursos.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          <button
+            type="button"
+            onClick={openManualModal}
+            className="btn-primary justify-center sm:w-auto"
+          >
+            <Plus className="w-4 h-4" />
+            Adicionar manual
+          </button>
         </div>
       </div>
 
@@ -394,6 +575,14 @@ export default function AlunosPage() {
         onAutorizar={handleAutorizar}
         onRecusar={handleRecusar}
         processing={processing}
+      />
+
+      <ManualStudentModal
+        isOpen={manualOpen}
+        onClose={closeManualModal}
+        courses={courses}
+        onSubmit={handleManualSubmit}
+        loading={manualSaving}
       />
     </div>
   );
