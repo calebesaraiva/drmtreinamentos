@@ -1616,6 +1616,7 @@ function getClasses() {
 function createManualClass(payload) {
   const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
   if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
+  const classDuration = String(payload.duracao || course.duracao || '').trim() || '8 horas';
 
   const empresa = payload.empresa || {};
   if (!String(empresa.nome || '').trim()) return { status: 400, error: 'Empresa e obrigatoria.' };
@@ -1656,7 +1657,7 @@ function createManualClass(payload) {
     },
     cursoId: course.id,
     nomeCurso: course.nomeCurso,
-    cargaHoraria: course.duracao,
+    cargaHoraria: classDuration,
     validade: payload.validade || certificateSettings.config?.validadeAnos || '',
     modeloCertificado: payload.modeloCertificado || certificateSettings.config?.tituloCertificado || 'CERTIFICADO',
     instrutorNome: payload.instrutorNome || course.instrutorNome || course.instrutor || '',
@@ -1693,7 +1694,7 @@ function createManualClass(payload) {
     local: turma.local,
     data: turma.data,
     horarioInicio: turma.horarioInicio,
-    duracao: course.duracao,
+    duracao: classDuration,
     periodoInicio: turma.periodoInicio,
     periodoFim: turma.periodoFim,
     temInstrutor: course.temInstrutor,

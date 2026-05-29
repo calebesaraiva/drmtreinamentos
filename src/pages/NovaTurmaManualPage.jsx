@@ -18,6 +18,7 @@ const emptyCourseInfo = {
   periodoInicio: '',
   periodoFim: '',
   local: '',
+  duracao: '',
 };
 const emptyStudent = () => ({
   id: crypto.randomUUID?.() || `${Date.now()}-${Math.random()}`,
@@ -188,6 +189,7 @@ export default function NovaTurmaManualPage() {
           ...prev,
           horarioInicio: prev.horarioInicio || defaults.horarioInicio || '',
           local: prev.local || defaults.local || '',
+          duracao: prev.duracao || defaults.duracao || '',
         }));
       }
     } catch {
@@ -240,7 +242,7 @@ export default function NovaTurmaManualPage() {
   const visibleOffset = (studentPage - 1) * pageSize;
   const visibleRows = rows.slice(visibleOffset, visibleOffset + pageSize);
   const canAdvanceCompany = Boolean(company.nome.trim());
-  const canAdvanceCourse = Boolean(courseInfo.cursoId && courseInfo.data && courseInfo.periodoInicio && courseInfo.periodoFim && courseInfo.local);
+  const canAdvanceCourse = Boolean(courseInfo.cursoId && courseInfo.data && courseInfo.periodoInicio && courseInfo.periodoFim && courseInfo.local && courseInfo.duracao);
   const canAdvanceStudents = rows.length > 0 && invalidRows === 0;
   const maxUnlockedStep = useMemo(() => {
     if (step === 4) return 4;
@@ -268,6 +270,7 @@ export default function NovaTurmaManualPage() {
         periodoInicio: prev.periodoInicio || course?.data || '',
         periodoFim: prev.periodoFim || course?.data || '',
         local: prev.local || course?.local || '',
+        duracao: prev.duracao || course?.duracao || '',
       };
     });
   };
@@ -393,6 +396,7 @@ export default function NovaTurmaManualPage() {
           companyName: company.nome,
           horarioInicio: courseInfo.horarioInicio,
           local: courseInfo.local,
+          duracao: courseInfo.duracao,
         }));
         localStorage.setItem(LAST_CLASS_KEY, JSON.stringify({
           company,
@@ -549,11 +553,12 @@ export default function NovaTurmaManualPage() {
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Data final *</label><input type="date" value={courseInfo.periodoFim} onChange={e => updateCourse('periodoFim', e.target.value)} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Data da turma *</label><input type="date" value={courseInfo.data} onChange={e => updateCourse('data', e.target.value)} className="input-field" /></div>
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Hora de início</label><input type="time" value={courseInfo.horarioInicio} onChange={e => updateCourse('horarioInicio', e.target.value)} className="input-field" /></div>
+            <div><label className="block text-sm font-medium text-gray-700 mb-1">Carga horária (horas) *</label><input type="number" min="1" value={String(courseInfo.duracao || '').replace(/\D/g, '')} onChange={e => updateCourse('duracao', `${Math.max(1, Number(e.target.value || 0))} horas`)} className="input-field" placeholder="Ex: 8" /></div>
             <div className="sm:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Local *</label><input value={courseInfo.local} onChange={e => updateCourse('local', e.target.value)} className="input-field" /></div>
           </div>
           {selectedCourse && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="rounded-xl bg-blue-50 p-3"><p className="text-xs text-blue-600">Carga horária</p><p className="font-bold text-blue-950">{selectedCourse.duracao}</p></div>
+              <div className="rounded-xl bg-blue-50 p-3"><p className="text-xs text-blue-600">Carga horária</p><p className="font-bold text-blue-950">{courseInfo.duracao || selectedCourse.duracao || 'Não informada'}</p></div>
               <div className="rounded-xl bg-green-50 p-3"><p className="text-xs text-green-600">Instrutor</p><p className="font-bold text-green-950">{selectedCourse.instrutorNome || selectedCourse.instrutor || 'Não informado'}</p></div>
               <div className="rounded-xl bg-amber-50 p-3"><p className="text-xs text-amber-600">Modelo</p><p className="font-bold text-amber-950">Certificado padrão</p></div>
             </div>
@@ -668,6 +673,7 @@ export default function NovaTurmaManualPage() {
             <div className="rounded-xl border border-gray-100 p-4"><p className="text-xs text-gray-500">Curso</p><p className="font-bold">{selectedCourse?.nomeCurso}</p></div>
             <div className="rounded-xl border border-gray-100 p-4"><p className="text-xs text-gray-500">Data da turma</p><p className="font-bold">{formatDate(courseInfo.data)}</p></div>
             <div className="rounded-xl border border-gray-100 p-4"><p className="text-xs text-gray-500">Alunos</p><p className="font-bold">{rows.length} total, {validRows} válidos, {invalidRows} pendência(s)</p></div>
+            <div className="rounded-xl border border-gray-100 p-4"><p className="text-xs text-gray-500">Carga horária</p><p className="font-bold">{courseInfo.duracao || selectedCourse?.duracao || 'Não informada'}</p></div>
           </div>
           <div className="rounded-xl bg-blue-50 border border-blue-100 p-4">
             <p className="font-semibold text-blue-950">Quem vai para análise</p>
