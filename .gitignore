@@ -5,3 +5,5 @@ dist/
 backend/data.json
 tmp-*.js
 tmp-*.json
+drm-deploy.tar.gz
+drm-release-*.tar.gz
