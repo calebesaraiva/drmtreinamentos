@@ -1415,7 +1415,7 @@ function createStudentEnrollment(courseId, payload) {
     return { status: 400, error: 'Curso sem vagas disponiveis.' };
   }
 
-  const required = ['nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+  const required = ['nome', 'cpf'];
   const missing = required.filter(field => !payload[field] || String(payload[field]).trim() === '');
   if (missing.length > 0) {
     return { status: 400, error: `Campos obrigatorios: ${missing.join(', ')}` };
@@ -1491,15 +1491,19 @@ async function createManualStudent(payload) {
   const studentDuration = String(payload.duracao || course.duracao || '').trim();
   const studentPeriodoInicio = String(payload.periodoInicio || studentDate || '').trim();
   const studentPeriodoFim = String(payload.periodoFim || studentDate || '').trim();
+  const studentEmail = String(payload.email || '').trim();
+  const studentPhone = String(payload.telefone || '').trim();
+  const studentCompany = String(payload.empresa || '').trim() || 'A definir';
+  const studentRole = String(payload.cargo || '').trim() || 'Participante';
   const nextId = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
   let student = {
     id: nextId,
     nome: String(payload.nome).trim(),
     cpf: String(payload.cpf).trim(),
-    email: String(payload.email).trim(),
-    telefone: String(payload.telefone).trim(),
-    empresa: String(payload.empresa).trim(),
-    cargo: String(payload.cargo).trim(),
+    email: studentEmail,
+    telefone: studentPhone,
+    empresa: studentCompany,
+    cargo: studentRole,
     cursoId: course.id,
     nomeCurso: course.nomeCurso,
     local: studentLocation,
