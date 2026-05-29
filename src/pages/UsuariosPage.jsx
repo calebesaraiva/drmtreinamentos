@@ -6,6 +6,7 @@ const initialForm = {
   name: '',
   username: '',
   email: '',
+  empresa: '',
   password: '',
   role: 'instrutor',
   tipo: 'usuario',
@@ -23,6 +24,7 @@ export default function UsuariosPage() {
     name: '',
     username: '',
     email: '',
+    empresa: '',
     role: 'usuario',
     status: 'ativo',
     password: '',
@@ -73,6 +75,7 @@ export default function UsuariosPage() {
       name: item.name || '',
       username: item.username || '',
       email: item.email || '',
+      empresa: item.empresa || '',
       role: item.role || 'usuario',
       status: item.status || 'ativo',
       password: '',
@@ -85,6 +88,7 @@ export default function UsuariosPage() {
       name: '',
       username: '',
       email: '',
+      empresa: '',
       role: 'usuario',
       status: 'ativo',
       password: '',
@@ -98,6 +102,7 @@ export default function UsuariosPage() {
       name: editForm.name,
       username: editForm.username,
       email: editForm.email,
+      empresa: editForm.empresa,
       role: editForm.role,
       status: editForm.status,
     };
@@ -139,6 +144,7 @@ export default function UsuariosPage() {
           <input className="input-field" placeholder="Nome completo" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
           <input className="input-field" placeholder="Usuário de login" value={form.username} onChange={(e) => setForm(p => ({ ...p, username: e.target.value }))} />
           <input type="email" className="input-field" placeholder="E-mail" value={form.email} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} />
+          <input className="input-field" placeholder="Empresa (para perfil Empresário)" value={form.empresa} onChange={(e) => setForm(p => ({ ...p, empresa: e.target.value }))} />
           <input type="password" className="input-field" placeholder="Senha (mínimo 6 caracteres)" value={form.password} onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))} />
           <select className="input-field" value={form.role} onChange={(e) => setForm(p => ({ ...p, role: e.target.value }))}>
             <option value="instrutor">Instrutor</option>
@@ -254,6 +260,12 @@ export default function UsuariosPage() {
                           value={editForm.email}
                           onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
                           placeholder="E-mail"
+                        />
+                        <input
+                          className="input-field text-sm"
+                          value={editForm.empresa}
+                          onChange={(e) => setEditForm(p => ({ ...p, empresa: e.target.value }))}
+                          placeholder="Empresa"
                         />
                       </div>
                     ) : (

@@ -8,6 +8,11 @@ export default function Layout() {
   const { user } = useApp();
   const location = useLocation();
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  const role = String(user.role || '').toLowerCase();
+  const allowedBusinessRoutes = new Set(['/dashboard', '/pre-cadastro-empresarial']);
+  if (role === 'empresario' && !allowedBusinessRoutes.has(location.pathname)) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

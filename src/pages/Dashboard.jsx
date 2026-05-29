@@ -156,6 +156,81 @@ export default function Dashboard() {
 
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+  const isBusinessUser = String(user?.role || '').toLowerCase() === 'empresario';
+
+  if (isBusinessUser) {
+    return (
+      <div className="space-y-6">
+        {connectionWarning && (
+          <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            <p className="text-sm text-amber-800">{connectionWarning}</p>
+          </div>
+        )}
+
+        <div className="bg-gradient-to-r from-blue-900 to-blue-700 rounded-2xl p-6 text-white">
+          <h2 className="text-xl font-bold">{saudacao}, {user?.name?.split(' ')[0]}!</h2>
+          <p className="text-blue-200 text-sm mt-1">
+            Portal da sua empresa: acompanhe alunos, cursos contratados e envie novos pré-cadastros.
+          </p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <button onClick={() => navigate('/pre-cadastro-empresarial')} className="bg-white text-blue-800 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors">
+              Cadastrar alunos para curso
+            </button>
+            <button onClick={() => navigate('/cursos')} className="bg-blue-800/70 text-white text-sm font-semibold px-4 py-2 rounded-lg border border-blue-300/30 hover:bg-blue-800 transition-colors">
+              Contratar curso
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard icon={Users} label="Funcionários" value={totalAlunos} sub="Da sua empresa" color="text-blue-600" />
+          <StatCard icon={Clock} label="Pendentes" value={alunosPendentes} sub="Aguardando validação DRM" color="text-amber-500" />
+          <StatCard icon={Award} label="Certificados" value={certificadosEmitidos} sub={`${certificadosEnviados} enviados`} color="text-green-600" />
+          <StatCard icon={BookOpen} label="Cursos contratados" value={totalCursos} sub="Da sua empresa" color="text-purple-600" />
+        </div>
+
+        <div className="card">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-bold text-gray-800">Funcionários recentes da sua empresa</h3>
+            <button onClick={() => navigate('/pre-cadastro-empresarial')} className="text-blue-600 text-sm hover:underline">
+              Novo pré-cadastro
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Nome</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3 hidden sm:table-cell">Curso</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Cadastro</th>
+                  <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Certificado</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {recentStudents.map(s => (
+                  <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="py-3 pr-4"><p className="text-sm font-medium text-gray-800 truncate max-w-40">{s.nome}</p></td>
+                    <td className="py-3 pr-4 hidden sm:table-cell"><p className="text-xs text-gray-600 truncate max-w-40">{s.nomeCurso}</p></td>
+                    <td className="py-3 pr-4">
+                      <span className={s.statusCadastro === 'aprovado' ? 'badge-green' : s.statusCadastro === 'recusado' ? 'badge-red' : 'badge-yellow'}>
+                        {s.statusCadastro === 'aprovado' ? 'Aprovado' : s.statusCadastro === 'recusado' ? 'Recusado' : 'Pendente'}
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <span className={s.statusCertificado === 'aprovado' ? 'badge-green' : s.statusCertificado === 'recusado' ? 'badge-red' : 'badge-yellow'}>
+                        {s.statusCertificado === 'aprovado' ? 'Aprovado' : s.statusCertificado === 'recusado' ? 'Recusado' : 'Pendente'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

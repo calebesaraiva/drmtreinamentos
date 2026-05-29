@@ -436,6 +436,77 @@ function currentUserFromAuth(auth = {}) {
   return users.find(item => String(item.id) === String(auth.sub)) || null;
 }
 
+function isBusinessRole(auth = {}) {
+  return String(auth.role || '').toLowerCase() === 'empresario';
+}
+
+function businessScopedClasses(auth = {}) {
+  if (!isBusinessRole(auth)) return classes;
+  const current = currentUserFromAuth(auth);
+  const company = String(current?.empresa || '').trim().toLowerCase();
+  const actorName = String(current?.name || '').trim().toLowerCase();
+  const actorUser = String(current?.username || '').trim().toLowerCase();
+  return classes.filter((turma) => {
+    const classCompany = String(turma?.empresa?.nome || '').trim().toLowerCase();
+    const createdBy = String(turma?.criadoPor || '').trim().toLowerCase();
+    if (company && classCompany === company) return true;
+    return createdBy === actorName || createdBy === actorUser;
+  });
+}
+
+function businessScopedStudents(auth = {}) {
+  if (!isBusinessRole(auth)) return students;
+  const scopedClasses = businessScopedClasses(auth);
+  const classIds = new Set(scopedClasses.map(item => String(item.id)));
+  const current = currentUserFromAuth(auth);
+  const company = String(current?.empresa || '').trim().toLowerCase();
+  return students.filter((student) => {
+    if (classIds.has(String(student.turmaId || ''))) return true;
+    if (company) return String(student.empresa || '').trim().toLowerCase() === company;
+    return false;
+  });
+}
+
+function dashboardFromData(studentsData = [], classesData = [], coursesData = []) {
+  const totalAlunos = studentsData.length;
+  const alunosAprovados = studentsData.filter(s => s.statusCadastro === 'aprovado').length;
+  const alunosPendentes = studentsData.filter(s => s.statusCadastro === 'pendente').length;
+  const certificadosEmitidos = studentsData.filter(s => s.statusCertificado === 'aprovado').length;
+  const certificadosEnviados = studentsData.filter(s => s.certificadoEnviado).length;
+  const totalCursos = coursesData.length;
+
+  const pendingItems = studentsData
+    .filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente')
+    .map(s => ({
+      id: s.id,
+      nome: s.nome,
+      nomeCurso: s.nomeCurso,
+      statusCadastro: s.statusCadastro,
+      statusCertificado: s.statusCertificado,
+    }));
+
+  const recentStudents = [...studentsData]
+    .sort((a, b) => b.id - a.id)
+    .slice(0, 5);
+
+  return {
+    metrics: {
+      totalAlunos,
+      alunosAprovados,
+      alunosPendentes,
+      certificadosEmitidos,
+      certificadosEnviados,
+      totalCursos,
+    },
+    charts: {
+      monthly: CHART_DATA_MONTHLY,
+    },
+    pendingItems,
+    recentStudents,
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 function listUsers() {
   return users.map(sanitizeManagedUser);
 }
@@ -448,9 +519,13 @@ function createManagedUser(payload = {}) {
   const role = normalizeUserRole(payload.role);
   const tipo = payload.tipo === 'instrutor' ? 'instrutor' : 'usuario';
   const status = normalizeUserStatus(payload.status);
+  const empresa = String(payload.empresa || '').trim();
 
   if (!name || !username || !email || !password) {
     return { status: 400, error: 'Nome, usuário, e-mail e senha são obrigatórios.' };
+  }
+  if (role === 'empresario' && !empresa) {
+    return { status: 400, error: 'Informe a empresa para usuário Empresário.' };
   }
   if (password.length < 6) {
     return { status: 400, error: 'A senha deve ter pelo menos 6 caracteres.' };
@@ -470,6 +545,7 @@ function createManagedUser(payload = {}) {
     email,
     password,
     role,
+    empresa,
     tipo,
     status,
     createdAt: new Date().toISOString(),
@@ -491,9 +567,13 @@ function updateManagedUser(id, payload = {}) {
   const nextStatus = payload.status !== undefined ? normalizeUserStatus(payload.status) : target.status;
   const nextTipo = payload.tipo !== undefined ? (payload.tipo === 'instrutor' ? 'instrutor' : 'usuario') : target.tipo;
   const nextPassword = payload.password !== undefined ? String(payload.password || '').trim() : target.password;
+  const nextEmpresa = payload.empresa !== undefined ? String(payload.empresa || '').trim() : String(target.empresa || '').trim();
 
   if (!nextName || !nextUsername || !nextEmail) {
     return { status: 400, error: 'Nome, usuário e e-mail são obrigatórios.' };
+  }
+  if (nextRole === 'empresario' && !nextEmpresa) {
+    return { status: 400, error: 'Informe a empresa para usuário Empresário.' };
   }
   if (!nextPassword) {
     return { status: 400, error: 'Senha inválida.' };
@@ -519,6 +599,7 @@ function updateManagedUser(id, payload = {}) {
     email: nextEmail,
     password: nextPassword,
     role: nextRole,
+    empresa: nextEmpresa,
     tipo: nextTipo,
     status: nextStatus,
     updatedAt: new Date().toISOString(),
@@ -1172,43 +1253,7 @@ async function sendCertificateEmail(student, options = {}) {
 }
 
 function buildDashboard() {
-  const totalAlunos = students.length;
-  const alunosAprovados = students.filter(s => s.statusCadastro === 'aprovado').length;
-  const alunosPendentes = students.filter(s => s.statusCadastro === 'pendente').length;
-  const certificadosEmitidos = students.filter(s => s.statusCertificado === 'aprovado').length;
-  const certificadosEnviados = students.filter(s => s.certificadoEnviado).length;
-  const totalCursos = courses.length;
-
-  const pendingItems = students
-    .filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente')
-    .map(s => ({
-      id: s.id,
-      nome: s.nome,
-      nomeCurso: s.nomeCurso,
-      statusCadastro: s.statusCadastro,
-      statusCertificado: s.statusCertificado,
-    }));
-
-  const recentStudents = [...students]
-    .sort((a, b) => b.id - a.id)
-    .slice(0, 5);
-
-  return {
-    metrics: {
-      totalAlunos,
-      alunosAprovados,
-      alunosPendentes,
-      certificadosEmitidos,
-      certificadosEnviados,
-      totalCursos,
-    },
-    charts: {
-      monthly: CHART_DATA_MONTHLY,
-    },
-    pendingItems,
-    recentStudents,
-    generatedAt: new Date().toISOString(),
-  };
+  return dashboardFromData(students, classes, courses);
 }
 
 function normalizeCoursePayload(payload) {
@@ -1727,7 +1772,8 @@ function createCompanyPreRegistration(payload) {
   const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
   if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
 
-  const empresaNome = String(payload.empresaNome || payload.empresa?.nome || '').trim();
+  const empresaFixada = String(payload.authUser?.empresa || '').trim();
+  const empresaNome = String(empresaFixada || payload.empresaNome || payload.empresa?.nome || '').trim();
   if (!empresaNome) return { status: 400, error: 'Empresa e obrigatoria.' };
 
   const rows = Array.isArray(payload.alunos) ? payload.alunos : [];
@@ -2272,12 +2318,23 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/dashboard') {
+    if (isBusinessRole(req.auth || {})) {
+      const scopedClasses = businessScopedClasses(req.auth);
+      const scopedStudents = businessScopedStudents(req.auth);
+      const scopedCourseIds = new Set([
+        ...scopedClasses.map(item => String(item.cursoId || '')),
+        ...scopedStudents.map(item => String(item.cursoId || '')),
+      ]);
+      const scopedCourses = courses.filter(course => scopedCourseIds.has(String(course.id)));
+      sendJson(res, 200, dashboardFromData(scopedStudents, scopedClasses, scopedCourses));
+      return;
+    }
     sendJson(res, 200, buildDashboard());
     return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/students') {
-    sendJson(res, 200, students);
+    sendJson(res, 200, businessScopedStudents(req.auth || {}));
     return;
   }
 
@@ -2287,6 +2344,11 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/classes') {
+    const scoped = businessScopedClasses(req.auth || {});
+    if (isBusinessRole(req.auth || {})) {
+      sendJson(res, 200, scoped.map(enrichClass));
+      return;
+    }
     sendJson(res, 200, getClasses());
     return;
   }
@@ -2411,6 +2473,7 @@ const server = createServer(async (req, res) => {
       ...body,
       actor: req.auth?.name || body.actor || 'Empresário',
       actorRole: req.auth?.role || body.actorRole || 'empresario',
+      authUser: currentUserFromAuth(req.auth || {}),
     });
     if (result.error) {
       sendJson(res, result.status, { error: result.error });

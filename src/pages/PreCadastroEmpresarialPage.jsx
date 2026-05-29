@@ -26,6 +26,7 @@ export default function PreCadastroEmpresarialPage() {
   const [rows, setRows] = useState([newRow(), newRow()]);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
+  const lockedCompany = String(user?.empresa || '').trim();
 
   const activeCourses = useMemo(
     () => courses.filter(course => course.status !== 'inativo'),
@@ -55,6 +56,12 @@ export default function PreCadastroEmpresarialPage() {
   const canSubmit = Boolean(
     form.cursoId && form.empresaNome.trim() && validRows.length > 0,
   );
+
+  React.useEffect(() => {
+    if (lockedCompany) {
+      setForm(prev => ({ ...prev, empresaNome: prev.empresaNome || lockedCompany }));
+    }
+  }, [lockedCompany]);
 
   const submit = async () => {
     if (!canSubmit) {
@@ -119,7 +126,7 @@ export default function PreCadastroEmpresarialPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Empresa contratante *</label>
-            <input value={form.empresaNome} onChange={(e) => updateField('empresaNome', e.target.value)} className="input-field" />
+            <input value={form.empresaNome} onChange={(e) => updateField('empresaNome', e.target.value)} className="input-field" disabled={Boolean(lockedCompany)} />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Contato</label>
