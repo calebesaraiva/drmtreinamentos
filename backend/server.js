@@ -12,6 +12,7 @@ import {
   MOCK_COURSES,
   CHART_DATA_MONTHLY,
 } from '../src/data/mockData.js';
+import { NR_CATALOG } from '../src/data/nrCatalog.js';
 import {
   defaultCertificateConfig,
   defaultCertificateLayout,
@@ -429,7 +430,10 @@ function normalizeUserRole(role) {
 }
 
 function normalizeUserStatus(status) {
-  return String(status || '').toLowerCase() === 'inativo' ? 'inativo' : 'ativo';
+  const normalized = String(status || '').toLowerCase();
+  if (normalized === 'inativo') return 'inativo';
+  if (normalized === 'pendente' || normalized === 'pendente_aprovacao') return 'pendente';
+  return 'ativo';
 }
 
 function currentUserFromAuth(auth = {}) {
@@ -518,7 +522,9 @@ function createManagedUser(payload = {}) {
   const password = String(payload.password || '').trim();
   const role = normalizeUserRole(payload.role);
   const tipo = payload.tipo === 'instrutor' ? 'instrutor' : 'usuario';
-  const status = normalizeUserStatus(payload.status);
+  const status = role === 'empresario'
+    ? normalizeUserStatus(payload.status || 'pendente')
+    : normalizeUserStatus(payload.status);
   const empresa = String(payload.empresa || '').trim();
 
   if (!name || !username || !email || !password) {
@@ -564,7 +570,7 @@ function updateManagedUser(id, payload = {}) {
   const nextEmail = payload.email !== undefined ? String(payload.email || '').trim().toLowerCase() : target.email;
   const nextName = payload.name !== undefined ? String(payload.name || '').trim() : target.name;
   const nextRole = payload.role !== undefined ? normalizeUserRole(payload.role) : target.role;
-  const nextStatus = payload.status !== undefined ? normalizeUserStatus(payload.status) : target.status;
+  const nextStatus = payload.status !== undefined ? normalizeUserStatus(payload.status) : normalizeUserStatus(target.status);
   const nextTipo = payload.tipo !== undefined ? (payload.tipo === 'instrutor' ? 'instrutor' : 'usuario') : target.tipo;
   const nextPassword = payload.password !== undefined ? String(payload.password || '').trim() : target.password;
   const nextEmpresa = payload.empresa !== undefined ? String(payload.empresa || '').trim() : String(target.empresa || '').trim();
@@ -1769,8 +1775,10 @@ function createManualClass(payload) {
 }
 
 function createCompanyPreRegistration(payload) {
-  const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
-  if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
+  const requestedCode = String(payload.codigoCatalogo || payload.courseCode || '').trim().toUpperCase();
+  const catalogItem = NR_CATALOG.find(item => String(item.code || '').toUpperCase() === requestedCode) || null;
+  const baseCourse = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
+  if (!baseCourse.id && !catalogItem) return { status: 404, error: 'Curso nao encontrado.' };
 
   const empresaFixada = String(payload.authUser?.empresa || '').trim();
   const empresaNome = String(empresaFixada || payload.empresaNome || payload.empresa?.nome || '').trim();
@@ -1788,21 +1796,69 @@ function createCompanyPreRegistration(payload) {
     const cpf = String(row.cpf || '').replace(/\D/g, '');
     if (cpfSet.has(cpf)) return { status: 409, error: `CPF duplicado no pre-cadastro: ${row.cpf}.` };
     cpfSet.add(cpf);
-    const duplicate = students.find(student => (
-      String(student.cursoId) === String(course.id) &&
-      String(student.cpf || '').replace(/\D/g, '') === cpf
-    ));
-    if (duplicate) return { status: 409, error: `CPF ja cadastrado para este curso: ${row.cpf}.` };
+    if (baseCourse.id) {
+      const duplicate = students.find(student => (
+        String(student.cursoId) === String(baseCourse.id) &&
+        String(student.cpf || '').replace(/\D/g, '') === cpf
+      ));
+      if (duplicate) return { status: 409, error: `CPF ja cadastrado para este curso: ${row.cpf}.` };
+    }
   }
 
   const actor = actorLabel(payload);
   const actorRole = payload.actorRole || 'empresario';
   const now = new Date().toISOString();
-  const classDuration = String(payload.duracao || course.duracao || '').trim() || '8 horas';
+  const templateCourse = baseCourse.id ? baseCourse : {
+    nomeCurso: catalogItem?.nomeCurso || payload.nomeCurso || 'Curso solicitado',
+    duracao: catalogItem?.duracao || payload.duracao || '8 horas',
+    descricao: catalogItem?.descricao || payload.descricao || '',
+    instrutorNome: '',
+    instrutorCargo: '',
+    instrutorRegistro: '',
+    temInstrutor: false,
+    local: '',
+    data: '',
+    horarioInicio: '',
+  };
+  const classDuration = String(payload.duracao || templateCourse.duracao || '').trim() || '8 horas';
+
+  let effectiveCourse = baseCourse;
+  if (!baseCourse.id || baseCourse.tipoCurso === 'modelo' || String(payload.forcePendingCourse || 'true') !== 'false') {
+    const nextCourseId = courses.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+    const requestedCourse = {
+      id: nextCourseId,
+      qrCode: `DRM-SOL-${String(Date.now()).slice(-6)}`,
+      local: String(payload.local || '').trim() || 'A definir',
+      data: String(payload.data || '').trim() || '',
+      horarioInicio: String(payload.horarioInicio || '').trim() || '',
+      duracao: classDuration,
+      maxAlunos: Number(payload.maxAlunos || rows.length || 30),
+      temInstrutor: false,
+      instrutor: '',
+      instrutorNome: '',
+      instrutorCargo: '',
+      instrutorRegistro: '',
+      nomeCurso: templateCourse.nomeCurso,
+      descricao: templateCourse.descricao || '',
+      empresaContratante: empresaNome,
+      status: 'pendente_aprovacao',
+      codigoVerificacao: buildCourseAccessCode(templateCourse.nomeCurso),
+      tipoCurso: 'solicitacao_empresarial',
+      codigoCatalogo: requestedCode || templateCourse.codigoCatalogo || '',
+      origemSolicitacao: 'empresario',
+      solicitacaoAprovacao: 'pendente',
+      solicitadoPor: actor,
+      createdAt: now.split('T')[0],
+      solicitadoEm: now,
+    };
+    courses = [...courses, requestedCourse];
+    effectiveCourse = normalizeCourse(requestedCourse);
+  }
+
   const nextClassId = classes.reduce((max, turma) => Math.max(max, Number(turma.id) || 0), 0) + 1;
   const turma = {
     id: nextClassId,
-    nome: payload.nome || `Pré-cadastro ${course.nomeCurso} - ${empresaNome}`,
+    nome: payload.nome || `Pré-cadastro ${effectiveCourse.nomeCurso} - ${empresaNome}`,
     empresa: {
       nome: empresaNome,
       cnpj: String(payload.empresaCnpj || '').trim(),
@@ -1810,25 +1866,26 @@ function createCompanyPreRegistration(payload) {
       telefone: String(payload.empresaTelefone || '').trim(),
       email: String(payload.empresaEmail || '').trim(),
     },
-    cursoId: course.id,
-    nomeCurso: course.nomeCurso,
+    cursoId: effectiveCourse.id,
+    nomeCurso: effectiveCourse.nomeCurso,
     cargaHoraria: classDuration,
     validade: payload.validade || certificateSettings.config?.validadeAnos || '',
     modeloCertificado: payload.modeloCertificado || certificateSettings.config?.tituloCertificado || 'CERTIFICADO',
-    instrutorNome: payload.instrutorNome || course.instrutorNome || course.instrutor || '',
-    instrutorCargo: payload.instrutorCargo || course.instrutorCargo || '',
-    instrutorRegistro: payload.instrutorRegistro || course.instrutorRegistro || '',
-    local: payload.local || course.local,
-    data: payload.data || course.data,
-    horarioInicio: payload.horarioInicio || course.horarioInicio,
-    periodoInicio: payload.periodoInicio || payload.data || course.data,
-    periodoFim: payload.periodoFim || payload.data || course.data,
+    instrutorNome: payload.instrutorNome || effectiveCourse.instrutorNome || effectiveCourse.instrutor || '',
+    instrutorCargo: payload.instrutorCargo || effectiveCourse.instrutorCargo || '',
+    instrutorRegistro: payload.instrutorRegistro || effectiveCourse.instrutorRegistro || '',
+    local: payload.local || effectiveCourse.local,
+    data: payload.data || effectiveCourse.data,
+    horarioInicio: payload.horarioInicio || effectiveCourse.horarioInicio,
+    periodoInicio: payload.periodoInicio || payload.data || effectiveCourse.data,
+    periodoFim: payload.periodoFim || payload.data || effectiveCourse.data,
     status: 'em_analise',
     origem: 'pre-cadastro-empresarial',
+    solicitacaoCursoStatus: 'pendente',
     criadoEm: now,
     criadoPor: actor,
     historico: [
-      { tipo: 'pre-cadastro', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} funcionario(s) enviados para validacao DRM.` },
+      { tipo: 'pre-cadastro', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} funcionario(s) e curso solicitados para validacao DRM.` },
     ],
   };
 
@@ -1841,17 +1898,17 @@ function createCompanyPreRegistration(payload) {
     telefone: String(row.telefone).trim(),
     empresa: empresaNome,
     cargo: String(row.cargo || 'Funcionário').trim(),
-    cursoId: course.id,
+    cursoId: effectiveCourse.id,
     turmaId: turma.id,
     turmaNome: turma.nome,
-    nomeCurso: course.nomeCurso,
+    nomeCurso: effectiveCourse.nomeCurso,
     local: turma.local,
     data: turma.data,
     horarioInicio: turma.horarioInicio,
     duracao: classDuration,
     periodoInicio: turma.periodoInicio,
     periodoFim: turma.periodoFim,
-    temInstrutor: course.temInstrutor,
+    temInstrutor: effectiveCourse.temInstrutor,
     instrutor: turma.instrutorNome,
     instrutorNome: turma.instrutorNome,
     instrutorCargo: turma.instrutorCargo,
@@ -1872,7 +1929,7 @@ function createCompanyPreRegistration(payload) {
   classes = [...classes, turma];
   students = [...students, ...newStudents];
   persistData();
-  return { class: enrichClass(turma), students: newStudents };
+  return { class: enrichClass(turma), students: newStudents, course: effectiveCourse };
 }
 
 function updateClassStudentsStatus(id, payload) {
@@ -2228,17 +2285,25 @@ const server = createServer(async (req, res) => {
     }
     const username = String(body.username || '').trim();
     const password = String(body.password || '').trim();
-    const matchedUser = users.find(item => (
+    const byCredentials = users.find(item => (
       item.username === username &&
-      item.password === password &&
-      normalizeUserStatus(item.status) === 'ativo'
+      item.password === password
     ));
-    if (!matchedUser) {
+    if (!byCredentials) {
       sendJson(res, 401, { error: 'Usuario ou senha invalidos.' });
       return;
     }
-    const auth = issueAuthToken(matchedUser);
-    sendJson(res, 200, { user: sanitizeManagedUser(matchedUser), ...auth });
+    const userStatus = normalizeUserStatus(byCredentials.status);
+    if (userStatus === 'pendente') {
+      sendJson(res, 403, { error: 'Seu acesso está pendente de aprovação pelo responsável DRM.' });
+      return;
+    }
+    if (userStatus !== 'ativo') {
+      sendJson(res, 403, { error: 'Seu acesso está inativo. Fale com o responsável DRM.' });
+      return;
+    }
+    const auth = issueAuthToken(byCredentials);
+    sendJson(res, 200, { user: sanitizeManagedUser(byCredentials), ...auth });
     return;
   }
 

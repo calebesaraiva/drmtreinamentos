@@ -60,6 +60,11 @@ export default function UsuariosPage() {
     ));
   }, [search, systemUsers]);
 
+  const pendingBusinessUsers = useMemo(
+    () => systemUsers.filter(item => item.role === 'empresario' && item.status === 'pendente').length,
+    [systemUsers],
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -133,6 +138,11 @@ export default function UsuariosPage() {
         </div>
         <h2 className="text-xl font-black text-gray-900">Usuários e Instrutores</h2>
         <p className="text-sm text-gray-500 mt-1">Cadastre novos acessos e gerencie os usuários do sistema.</p>
+        {pendingBusinessUsers > 0 && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            {pendingBusinessUsers} empresário(s) aguardando aprovação de primeiro acesso.
+          </div>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="card space-y-4">
@@ -152,6 +162,11 @@ export default function UsuariosPage() {
             <option value="empresario">Empresário</option>
             <option value="responsavel">Responsável</option>
             <option value="admin">Administrador</option>
+          </select>
+          <select className="input-field" value={form.status} onChange={(e) => setForm(p => ({ ...p, status: e.target.value }))}>
+            <option value="ativo">ativo</option>
+            <option value="pendente">pendente</option>
+            <option value="inativo">inativo</option>
           </select>
         </div>
         <button type="submit" className="btn-primary disabled:opacity-60" disabled={saving}>
@@ -240,6 +255,7 @@ export default function UsuariosPage() {
                           onChange={(e) => setEditForm(p => ({ ...p, status: e.target.value }))}
                         >
                           <option value="ativo">ativo</option>
+                          <option value="pendente">pendente</option>
                           <option value="inativo">inativo</option>
                         </select>
                         <input
@@ -292,6 +308,15 @@ export default function UsuariosPage() {
                             <Pencil className="w-3.5 h-3.5" />
                             Editar
                           </button>
+                          {item.role === 'empresario' && item.status === 'pendente' && (
+                            <button
+                              type="button"
+                              onClick={async () => { await updateSystemUser(item.id, { status: 'ativo' }); }}
+                              className="btn-success text-xs py-1.5 px-2.5"
+                            >
+                              Aprovar acesso
+                            </button>
+                          )}
                           <button type="button" onClick={async () => { await toggleSystemUserStatus(item.id); }} className="btn-secondary text-xs py-1.5 px-2.5">
                             <Power className="w-3.5 h-3.5" />
                             {item.status === 'ativo' ? 'Desativar' : 'Ativar'}

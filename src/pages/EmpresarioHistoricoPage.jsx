@@ -91,6 +91,7 @@ export default function EmpresarioHistoricoPage() {
                 <th className="p-2">Data</th>
                 <th className="p-2">Cadastro</th>
                 <th className="p-2">Certificado</th>
+                <th className="p-2">Observação</th>
                 <th className="p-2">Código</th>
               </tr>
             </thead>
@@ -108,6 +109,7 @@ export default function EmpresarioHistoricoPage() {
                     <span className={statusBadge(s.statusCertificado)}>{s.statusCertificado || 'pendente'}</span>
                     {s.statusCertificado === 'aprovado' && <Award className="w-3.5 h-3.5 inline ml-1 text-green-600" />}
                   </td>
+                  <td className="p-2 text-xs text-gray-600">{s.motivoRecusa || '-'}</td>
                   <td className="p-2 text-xs font-mono text-gray-600">{s.certificadoAssinaturaCodigo || '-'}</td>
                 </tr>
               ))}

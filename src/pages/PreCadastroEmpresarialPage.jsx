@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { CheckCircle, Loader2, Plus, Trash2, Users } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { NR_CATALOG } from '../data/nrCatalog';
 
 const COMPANY_SETUP_KEY = 'drmCompanyPreCadastroSetupV1';
 
@@ -27,7 +28,7 @@ export default function PreCadastroEmpresarialPage() {
   const savedSetup = loadSetup();
 
   const [form, setForm] = useState({
-    cursoId: savedSetup?.cursoId || '',
+    codigoCatalogo: savedSetup?.codigoCatalogo || '',
     empresaNome: lockedCompany || savedSetup?.empresaNome || '',
     empresaContato: savedSetup?.empresaContato || '',
     empresaTelefone: savedSetup?.empresaTelefone || '',
@@ -41,13 +42,23 @@ export default function PreCadastroEmpresarialPage() {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState(null);
 
-  const activeCourses = useMemo(
-    () => courses.filter(course => course.status !== 'inativo'),
-    [courses],
-  );
-  const selectedCourse = useMemo(
-    () => courses.find(course => String(course.id) === String(form.cursoId)),
-    [courses, form.cursoId],
+  const catalogOptions = useMemo(() => {
+    const byCode = new Map();
+    NR_CATALOG.forEach((item) => byCode.set(String(item.code).toUpperCase(), item));
+    courses
+      .filter(course => course.tipoCurso === 'modelo' || course.codigoCatalogo)
+      .forEach((course) => {
+        const code = String(course.codigoCatalogo || '').toUpperCase();
+        if (!code) return;
+        if (!byCode.has(code)) {
+          byCode.set(code, { code, nomeCurso: course.nomeCurso, duracao: course.duracao || '8 horas', descricao: course.descricao || '' });
+        }
+      });
+    return [...byCode.values()].sort((a, b) => String(a.nomeCurso || '').localeCompare(String(b.nomeCurso || ''), 'pt-BR'));
+  }, [courses]);
+  const selectedCatalog = useMemo(
+    () => catalogOptions.find(item => String(item.code).toUpperCase() === String(form.codigoCatalogo || '').toUpperCase()),
+    [catalogOptions, form.codigoCatalogo],
   );
   const validRows = rows.filter(row => row.nome.trim() && row.cpf.trim() && row.telefone.trim());
 
@@ -57,7 +68,7 @@ export default function PreCadastroEmpresarialPage() {
   };
   const updateRow = (id, field, value) => setRows(prev => prev.map(row => (row.id === id ? { ...row, [field]: value } : row)));
 
-  const canConfirmSetup = Boolean(form.cursoId && form.empresaNome.trim() && form.local.trim());
+  const canConfirmSetup = Boolean(form.codigoCatalogo && form.empresaNome.trim() && form.local.trim());
   const canSubmit = setupConfirmed && validRows.length > 0;
 
   const handleConfirmSetup = () => {
@@ -66,7 +77,7 @@ export default function PreCadastroEmpresarialPage() {
       return;
     }
     const setup = {
-      cursoId: form.cursoId,
+      codigoCatalogo: form.codigoCatalogo,
       empresaNome: form.empresaNome.trim(),
       empresaContato: form.empresaContato.trim(),
       empresaTelefone: form.empresaTelefone.trim(),
@@ -88,7 +99,10 @@ export default function PreCadastroEmpresarialPage() {
     setStatus(null);
     try {
       const result = await addCompanyPreRegistration({
-        cursoId: form.cursoId,
+        codigoCatalogo: form.codigoCatalogo,
+        nomeCurso: selectedCatalog?.nomeCurso || '',
+        duracao: selectedCatalog?.duracao || '',
+        descricao: selectedCatalog?.descricao || '',
         empresaNome: form.empresaNome,
         empresaContato: form.empresaContato,
         empresaTelefone: form.empresaTelefone,
@@ -138,7 +152,7 @@ export default function PreCadastroEmpresarialPage() {
           {!showSetupForm && (
             <div className="mt-3 text-sm text-blue-900">
               <p><strong>Empresa:</strong> {form.empresaNome || '-'}</p>
-              <p><strong>Curso:</strong> {selectedCourse?.nomeCurso || '-'}</p>
+              <p><strong>Curso:</strong> {selectedCatalog?.nomeCurso || '-'}</p>
               <button type="button" onClick={() => setShowSetupForm(true)} className="btn-secondary text-xs mt-3">
                 Editar dados salvos
               </button>
@@ -150,10 +164,10 @@ export default function PreCadastroEmpresarialPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Curso *</label>
-              <select value={form.cursoId} onChange={(e) => updateField('cursoId', e.target.value)} className="input-field">
+              <select value={form.codigoCatalogo} onChange={(e) => updateField('codigoCatalogo', e.target.value)} className="input-field">
                 <option value="">Selecione um curso</option>
-                {activeCourses.map(course => (
-                  <option key={course.id} value={course.id}>{course.nomeCurso}</option>
+                {catalogOptions.map(course => (
+                  <option key={course.code} value={course.code}>{course.nomeCurso}</option>
                 ))}
               </select>
             </div>
