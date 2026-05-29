@@ -28,7 +28,10 @@ export default function EmpresasClientesPage() {
           nome: company,
           alunos: new Set(),
           certificados: 0,
+          pendentes: 0,
+          recusados: 0,
           cursos: new Set(),
+          funcionarios: [],
           funcionariosComCertificado: [],
         });
       }
@@ -49,6 +52,24 @@ export default function EmpresasClientesPage() {
       if (!entry) return;
       entry.alunos.add(student.cpf || student.nome || String(student.id));
       if (student.nomeCurso) entry.cursos.add(student.nomeCurso);
+      const cadastroPendente = student.statusCadastro === 'pendente';
+      const certificadoPendente = student.statusCertificado === 'pendente';
+      const recusado = student.statusCadastro === 'recusado' || student.statusCertificado === 'recusado';
+      if (cadastroPendente || certificadoPendente) entry.pendentes += 1;
+      if (recusado) entry.recusados += 1;
+      entry.funcionarios.push({
+        id: student.id,
+        nome: student.nome,
+        cpf: student.cpf,
+        curso: student.nomeCurso,
+        data: student.data,
+        codigo: student.certificadoAssinaturaCodigo,
+        statusCadastro: student.statusCadastro,
+        statusCertificado: student.statusCertificado,
+        motivoRecusa: student.motivoRecusa || '',
+        certificadoAutorizadoEm: student.certificadoAutorizadoEm,
+        certificadoEnviado: Boolean(student.certificadoEnviado),
+      });
       if (student.statusCertificado === 'aprovado') {
         entry.certificados += 1;
         entry.funcionariosComCertificado.push({
@@ -69,6 +90,7 @@ export default function EmpresasClientesPage() {
         ...item,
         totalAlunos: item.alunos.size,
         totalCursos: item.cursos.size,
+        funcionarios: item.funcionarios.sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')),
       }))
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
   }, [students, courses, classes]);
@@ -220,7 +242,7 @@ export default function EmpresasClientesPage() {
               <div className="rounded-xl border border-gray-100 p-4">
                 <p className="text-lg font-bold text-gray-900">{activeCompany.nome}</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  {activeCompany.totalAlunos} funcionário(s) cadastrados · {activeCompany.certificados} certificado(s) aprovados
+                  {activeCompany.totalAlunos} funcionário(s) cadastrados · {activeCompany.certificados} certificado(s) aprovados · {activeCompany.pendentes} pendência(s)
                 </p>
                 <p className="text-xs text-gray-500 mt-2">
                   Cursos vinculados: {[...activeCompany.cursos].slice(0, 6).join(', ') || 'Sem cursos vinculados'}
@@ -236,15 +258,16 @@ export default function EmpresasClientesPage() {
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Data</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Código</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Status</th>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Obs.</th>
                       <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500 uppercase">Certificado</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
-                    {activeCompany.funcionariosComCertificado.length === 0 ? (
+                    {activeCompany.funcionarios.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-3 py-8 text-sm text-gray-400 text-center">Nenhum certificado aprovado para esta empresa.</td>
+                        <td colSpan={7} className="px-3 py-8 text-sm text-gray-400 text-center">Nenhum funcionário encontrado para esta empresa.</td>
                       </tr>
-                    ) : activeCompany.funcionariosComCertificado.map(item => (
+                    ) : activeCompany.funcionarios.map(item => (
                       <tr key={item.id}>
                         <td className="px-3 py-2 text-sm text-gray-800">
                           <p className="font-medium">{item.nome}</p>
@@ -255,6 +278,16 @@ export default function EmpresasClientesPage() {
                         <td className="px-3 py-2 text-xs font-mono text-gray-600">{item.codigo || '-'}</td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              item.statusCadastro === 'aprovado' ? 'bg-green-100 text-green-700' : item.statusCadastro === 'recusado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              Cadastro: {item.statusCadastro || 'pendente'}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                              item.statusCertificado === 'aprovado' ? 'bg-green-100 text-green-700' : item.statusCertificado === 'recusado' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              Cert: {item.statusCertificado || 'pendente'}
+                            </span>
                             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                               item.certificadoAutorizadoEm ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
                             }`}>
@@ -270,6 +303,7 @@ export default function EmpresasClientesPage() {
                             </span>
                           </div>
                         </td>
+                        <td className="px-3 py-2 text-xs text-gray-600">{item.motivoRecusa || '-'}</td>
                         <td className="px-3 py-2">
                           <button
                             type="button"
@@ -277,7 +311,8 @@ export default function EmpresasClientesPage() {
                               setSelectedCertificate(item);
                               setCertStatus(null);
                             }}
-                            className="btn-secondary text-xs py-1.5 px-2.5"
+                            disabled={item.statusCertificado !== 'aprovado'}
+                            className="btn-secondary text-xs py-1.5 px-2.5 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Eye className="w-3.5 h-3.5" />
                             Abrir opções
