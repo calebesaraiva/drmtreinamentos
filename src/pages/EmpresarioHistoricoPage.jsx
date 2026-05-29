@@ -8,6 +8,12 @@ function statusBadge(status) {
   return 'badge-yellow';
 }
 
+function requestStatusBadge(status) {
+  if (status === 'aprovado') return 'badge-green';
+  if (status === 'recusado') return 'badge-red';
+  return 'badge-yellow';
+}
+
 function formatDate(value) {
   if (!value) return '-';
   return new Date(`${value}T12:00`).toLocaleDateString('pt-BR');
@@ -68,6 +74,12 @@ export default function EmpresarioHistoricoPage() {
                 <Clock3 className="w-3 h-3 inline mr-1" />
                 {formatDate(item.data)} • {item.local || 'Local não informado'} • {item.cargaHoraria || '-'}
               </p>
+              {String(item.origem || '') === 'pre-cadastro-empresarial' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={requestStatusBadge(item.solicitacaoCursoStatus)}>{item.solicitacaoCursoStatus || 'pendente'}</span>
+                  {item.motivoSolicitacao && <span className="text-xs text-red-600">Obs: {item.motivoSolicitacao}</span>}
+                </div>
+              )}
             </div>
           ))}
           {sortedClasses.length === 0 && <p className="text-sm text-gray-500">Nenhuma turma encontrada.</p>}

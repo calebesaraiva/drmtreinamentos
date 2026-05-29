@@ -137,6 +137,10 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify(payload),
   }),
+  updateClassRequestStatus: (classId, payload) => request(`/api/classes/${classId}/request-status`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
   deleteTestClass: (classId, payload) => request(`/api/classes/${classId}`, {
     method: 'DELETE',
     body: JSON.stringify(payload),

@@ -1775,6 +1775,7 @@ function createManualClass(payload) {
 }
 
 function createCompanyPreRegistration(payload) {
+  const pendingRequestId = payload.pendingRequestId != null ? String(payload.pendingRequestId) : null;
   const requestedCode = String(payload.codigoCatalogo || payload.courseCode || '').trim().toUpperCase();
   const catalogItem = NR_CATALOG.find(item => String(item.code || '').toUpperCase() === requestedCode) || null;
   const baseCourse = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
@@ -1785,7 +1786,6 @@ function createCompanyPreRegistration(payload) {
   if (!empresaNome) return { status: 400, error: 'Empresa e obrigatoria.' };
 
   const rows = Array.isArray(payload.alunos) ? payload.alunos : [];
-  if (rows.length === 0) return { status: 400, error: 'Informe ao menos um funcionario.' };
 
   const requiredStudent = ['nome', 'cpf', 'telefone'];
   const invalidIndex = rows.findIndex(row => requiredStudent.some(field => !String(row[field] || '').trim()));
@@ -1821,6 +1821,70 @@ function createCompanyPreRegistration(payload) {
     horarioInicio: '',
   };
   const classDuration = String(payload.duracao || templateCourse.duracao || '').trim() || '8 horas';
+
+  if (pendingRequestId) {
+    const pendingClass = classes.find(item => String(item.id) === pendingRequestId && String(item.origem || '') === 'pre-cadastro-empresarial');
+    if (!pendingClass) return { status: 404, error: 'Solicitacao pendente nao encontrada.' };
+    const pendingCourse = normalizeCourse(courses.find(item => String(item.id) === String(pendingClass.cursoId)) || {});
+    if (!pendingCourse.id) return { status: 404, error: 'Curso da solicitacao nao encontrado.' };
+    if (rows.length === 0) return { class: enrichClass(pendingClass), students: [], course: pendingCourse };
+
+    const nextStudentStart = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
+    const newStudents = rows.map((row, index) => ({
+      id: nextStudentStart + index,
+      nome: String(row.nome).trim(),
+      cpf: String(row.cpf).trim(),
+      email: String(row.email || '').trim(),
+      telefone: String(row.telefone).trim(),
+      empresa: pendingClass.empresa?.nome || empresaNome,
+      cargo: String(row.cargo || 'Funcionário').trim(),
+      cursoId: pendingCourse.id,
+      turmaId: pendingClass.id,
+      turmaNome: pendingClass.nome,
+      nomeCurso: pendingClass.nomeCurso || pendingCourse.nomeCurso,
+      local: pendingClass.local,
+      data: pendingClass.data,
+      horarioInicio: pendingClass.horarioInicio,
+      duracao: pendingClass.cargaHoraria || classDuration,
+      periodoInicio: pendingClass.periodoInicio,
+      periodoFim: pendingClass.periodoFim,
+      temInstrutor: pendingCourse.temInstrutor,
+      instrutor: pendingClass.instrutorNome,
+      instrutorNome: pendingClass.instrutorNome,
+      instrutorCargo: pendingClass.instrutorCargo,
+      instrutorRegistro: pendingClass.instrutorRegistro,
+      statusCadastro: 'pendente',
+      statusCertificado: 'pendente',
+      certificadoEnviado: false,
+      dataEnvio: null,
+      presente: true,
+      presenca: 100,
+      notaProva: 10,
+      foto: null,
+      motivoRecusa: null,
+      origemCadastro: 'pre-cadastro-empresarial',
+      inscritoEm: now,
+    }));
+
+    students = [...students, ...newStudents];
+    classes = classes.map(item => (
+      String(item.id) !== pendingRequestId
+        ? item
+        : {
+            ...item,
+            historico: [
+              ...(Array.isArray(item.historico) ? item.historico : []),
+              { tipo: 'alunos-adicionados', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} funcionario(s) enviados para validacao DRM.` },
+            ],
+          }
+    ));
+    persistData();
+    return {
+      class: enrichClass(classes.find(item => String(item.id) === pendingRequestId)),
+      students: newStudents,
+      course: pendingCourse,
+    };
+  }
 
   let effectiveCourse = baseCourse;
   if (!baseCourse.id || baseCourse.tipoCurso === 'modelo' || String(payload.forcePendingCourse || 'true') !== 'false') {
@@ -1885,7 +1949,7 @@ function createCompanyPreRegistration(payload) {
     criadoEm: now,
     criadoPor: actor,
     historico: [
-      { tipo: 'pre-cadastro', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} funcionario(s) e curso solicitados para validacao DRM.` },
+      { tipo: 'pre-cadastro', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: rows.length > 0 ? `${rows.length} funcionario(s) e curso solicitados para validacao DRM.` : 'Dados do treinamento confirmados. Aguardando cadastro de funcionarios.' },
     ],
   };
 
@@ -1969,6 +2033,71 @@ function updateClassStudentsStatus(id, payload) {
     class: enrichClass(classes.find(item => String(item.id) === String(id))),
     students,
   };
+}
+
+function updateClassRequestStatus(id, payload) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para aprovar ou recusar solicitações de turma.' };
+  }
+  const turma = classes.find(item => String(item.id) === String(id));
+  if (!turma) return { status: 404, error: 'Turma nao encontrada.' };
+  if (String(turma.origem || '') !== 'pre-cadastro-empresarial') {
+    return { status: 400, error: 'Esta turma não é de pré-cadastro empresarial.' };
+  }
+
+  const value = String(payload.value || '').trim().toLowerCase();
+  if (!['aprovado', 'recusado', 'pendente'].includes(value)) {
+    return { status: 400, error: 'Status da solicitação inválido.' };
+  }
+  const motivo = String(payload.motivo || '').trim();
+  if (value === 'recusado' && !motivo) {
+    return { status: 400, error: 'Informe o motivo da recusa da solicitação.' };
+  }
+
+  const actor = actorLabel(payload);
+  const actorRole = payload.actorRole || 'responsavel';
+  const now = new Date().toISOString();
+  const nextClassStatus = value === 'aprovado' ? 'aprovado' : value === 'recusado' ? 'com_pendencias' : 'em_analise';
+  const nextRequestStatus = value === 'aprovado' ? 'aprovado' : value === 'recusado' ? 'recusado' : 'pendente';
+
+  classes = classes.map(item => {
+    if (String(item.id) !== String(id)) return item;
+    return {
+      ...item,
+      status: nextClassStatus,
+      solicitacaoCursoStatus: nextRequestStatus,
+      motivoSolicitacao: value === 'recusado' ? motivo : null,
+      solicitadoAnalisadoEm: now,
+      solicitadoAnalisadoPor: actor,
+      historico: [
+        ...(Array.isArray(item.historico) ? item.historico : []),
+        {
+          tipo: `solicitacao-curso:${nextRequestStatus}`,
+          ator: actor,
+          perfil: actorRole,
+          em: now,
+          detalhe: value === 'recusado' ? `Solicitação recusada: ${motivo}` : `Solicitação ${nextRequestStatus}.`,
+        },
+      ],
+    };
+  });
+
+  const classUpdated = classes.find(item => String(item.id) === String(id));
+  const targetCourseId = String(classUpdated?.cursoId || '');
+  courses = courses.map(course => {
+    if (String(course.id) !== targetCourseId) return course;
+    return {
+      ...course,
+      status: value === 'aprovado' ? 'ativo' : value === 'recusado' ? 'recusado' : course.status,
+      solicitacaoAprovacao: nextRequestStatus,
+      motivoSolicitacao: value === 'recusado' ? motivo : null,
+      solicitadoAnalisadoEm: now,
+      solicitadoAnalisadoPor: actor,
+    };
+  });
+
+  persistData();
+  return { class: enrichClass(classUpdated) };
 }
 
 function deleteTestClass(id, payload = {}) {
@@ -2566,6 +2695,25 @@ const server = createServer(async (req, res) => {
       return;
     }
     const result = updateClassStudentsStatus(parts[2], body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'classes' && parts[2] && parts[3] === 'request-status') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateClassRequestStatus(parts[2], {
+      ...body,
+      actor: req.auth?.name || body.actor || 'Responsável DRM',
+      actorRole: req.auth?.role || body.actorRole || 'responsavel',
+    });
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;

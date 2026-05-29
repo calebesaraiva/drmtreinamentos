@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { NR_CATALOG } from '../data/nrCatalog';
 
 const COMPANY_SETUP_KEY = 'drmCompanyPreCadastroSetupV1';
+const COMPANY_PENDING_KEY = 'drmCompanyPreCadastroPendingV1';
 
 function newRow() {
   return {
@@ -26,6 +27,13 @@ export default function PreCadastroEmpresarialPage() {
   const { courses, addCompanyPreRegistration, user } = useApp();
   const lockedCompany = String(user?.empresa || '').trim();
   const savedSetup = loadSetup();
+  const savedPending = (() => {
+    try {
+      return JSON.parse(localStorage.getItem(COMPANY_PENDING_KEY) || 'null');
+    } catch {
+      return null;
+    }
+  })();
 
   const [form, setForm] = useState({
     codigoCatalogo: savedSetup?.codigoCatalogo || '',
@@ -40,7 +48,9 @@ export default function PreCadastroEmpresarialPage() {
   const [setupMessage, setSetupMessage] = useState(savedSetup ? 'Dados da empresa e curso carregados. Informe o local do treinamento e confirme.' : '');
   const [rows, setRows] = useState([newRow(), newRow()]);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [status, setStatus] = useState(null);
+  const [pendingRequestId, setPendingRequestId] = useState(savedPending?.classId || null);
 
   const catalogOptions = useMemo(() => {
     const byCode = new Map();
@@ -71,23 +81,50 @@ export default function PreCadastroEmpresarialPage() {
   const canConfirmSetup = Boolean(form.codigoCatalogo && form.empresaNome.trim() && form.local.trim());
   const canSubmit = setupConfirmed && validRows.length > 0;
 
-  const handleConfirmSetup = () => {
+  const handleConfirmSetup = async () => {
     if (!canConfirmSetup) {
       setStatus({ type: 'error', text: 'Preencha empresa contratante, curso e local do treinamento.' });
       return;
     }
-    const setup = {
-      codigoCatalogo: form.codigoCatalogo,
-      empresaNome: form.empresaNome.trim(),
-      empresaContato: form.empresaContato.trim(),
-      empresaTelefone: form.empresaTelefone.trim(),
-      empresaEmail: form.empresaEmail.trim(),
-    };
-    localStorage.setItem(COMPANY_SETUP_KEY, JSON.stringify(setup));
-    setSetupConfirmed(true);
-    setShowSetupForm(false);
+    setConfirming(true);
     setStatus(null);
-    setSetupMessage('Dados confirmados. Agora cadastre os alunos e envie para validação DRM.');
+    try {
+      const result = await addCompanyPreRegistration({
+        codigoCatalogo: form.codigoCatalogo,
+        nomeCurso: selectedCatalog?.nomeCurso || '',
+        duracao: selectedCatalog?.duracao || '',
+        descricao: selectedCatalog?.descricao || '',
+        empresaNome: form.empresaNome,
+        empresaContato: form.empresaContato,
+        empresaTelefone: form.empresaTelefone,
+        empresaEmail: form.empresaEmail,
+        local: form.local.trim(),
+        alunos: [],
+        actor: user?.name || 'Empresário',
+        actorRole: user?.role || 'empresario',
+      });
+      if (!result?.class?.id) {
+        setStatus({ type: 'error', text: 'Não foi possível criar a pendência para autorização DRM.' });
+        return;
+      }
+
+      const setup = {
+        codigoCatalogo: form.codigoCatalogo,
+        empresaNome: form.empresaNome.trim(),
+        empresaContato: form.empresaContato.trim(),
+        empresaTelefone: form.empresaTelefone.trim(),
+        empresaEmail: form.empresaEmail.trim(),
+      };
+      localStorage.setItem(COMPANY_SETUP_KEY, JSON.stringify(setup));
+      localStorage.setItem(COMPANY_PENDING_KEY, JSON.stringify({ classId: result.class.id }));
+      setPendingRequestId(result.class.id);
+      setSetupConfirmed(true);
+      setShowSetupForm(false);
+      setStatus(null);
+      setSetupMessage('Dados confirmados e enviados para autorização DRM. Agora cadastre os alunos e finalize o envio.');
+    } finally {
+      setConfirming(false);
+    }
   };
 
   const submit = async () => {
@@ -99,6 +136,7 @@ export default function PreCadastroEmpresarialPage() {
     setStatus(null);
     try {
       const result = await addCompanyPreRegistration({
+        pendingRequestId,
         codigoCatalogo: form.codigoCatalogo,
         nomeCurso: selectedCatalog?.nomeCurso || '',
         duracao: selectedCatalog?.duracao || '',
@@ -121,6 +159,8 @@ export default function PreCadastroEmpresarialPage() {
       setRows([newRow(), newRow()]);
       setForm(prev => ({ ...prev, local: '' }));
       setSetupConfirmed(false);
+      setPendingRequestId(null);
+      localStorage.removeItem(COMPANY_PENDING_KEY);
       setSetupMessage('Para o próximo pré-cadastro, informe apenas o local do treinamento e confirme os dados.');
     } catch (error) {
       setStatus({ type: 'error', text: error?.message || 'Não foi possível enviar o pré-cadastro.' });
@@ -196,8 +236,9 @@ export default function PreCadastroEmpresarialPage() {
         </div>
 
         <div className="flex justify-end border-t border-gray-100 pt-3">
-          <button type="button" onClick={handleConfirmSetup} className="btn-primary" disabled={!canConfirmSetup}>
-            Confirmar dados do treinamento
+          <button type="button" onClick={handleConfirmSetup} className="btn-primary disabled:opacity-60" disabled={!canConfirmSetup || confirming}>
+            {confirming ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {confirming ? 'Confirmando...' : 'Confirmar dados do treinamento'}
           </button>
         </div>
 

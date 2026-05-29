@@ -237,7 +237,7 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
 }
 
 export default function AnalisePage() {
-  const { students, classes, updateStudentStatus, updateClassStudentsStatus, refreshData, loadingData, apiError } = useApp();
+  const { students, classes, updateStudentStatus, updateClassStudentsStatus, updateClassRequestStatus, refreshData, loadingData, apiError } = useApp();
   const [filter, setFilter] = useState('pendente');
   const [recusaModal, setRecusaModal] = useState(null); // { aluno, tipo }
   const [processing, setProcessing] = useState(null);
@@ -284,7 +284,7 @@ export default function AnalisePage() {
       ...turma,
       students: safeStudents.filter(student => String(student.turmaId) === String(turma.id)),
     }))
-    .filter(turma => turma.students.length > 0);
+    .filter((turma) => turma.students.length > 0 || String(turma.origem || '') === 'pre-cadastro-empresarial');
 
   return (
     <div className="space-y-5">
@@ -340,6 +340,16 @@ export default function AnalisePage() {
                     <p className="text-xs text-blue-700 font-bold uppercase">Turma manual</p>
                     <h4 className="font-black text-gray-900">{turma.nome}</h4>
                     <p className="text-xs text-gray-500">{turma.empresa?.nome} - {turma.nomeCurso}</p>
+                    {String(turma.origem || '') === 'pre-cadastro-empresarial' && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className={turma.solicitacaoCursoStatus === 'aprovado' ? 'badge-green' : turma.solicitacaoCursoStatus === 'recusado' ? 'badge-red' : 'badge-yellow'}>
+                          Solicitação do curso: {turma.solicitacaoCursoStatus || 'pendente'}
+                        </span>
+                        {turma.motivoSolicitacao && (
+                          <span className="text-xs text-red-600">Obs: {turma.motivoSolicitacao}</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-center">
                     <div className="rounded-lg bg-gray-50 p-2"><p className="font-bold">{turma.students.length}</p><p className="text-[10px] text-gray-500">Alunos</p></div>
@@ -347,6 +357,24 @@ export default function AnalisePage() {
                     <div className="rounded-lg bg-green-50 p-2"><p className="font-bold text-green-700">{certAprovados.length}</p><p className="text-[10px] text-green-600">Aprovados</p></div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
+                    {String(turma.origem || '') === 'pre-cadastro-empresarial' && turma.solicitacaoCursoStatus !== 'aprovado' && (
+                      <button
+                        type="button"
+                        onClick={() => updateClassRequestStatus(turma.id, { value: 'aprovado' })}
+                        className="btn-success text-xs"
+                      >
+                        Aprovar solicitação do curso
+                      </button>
+                    )}
+                    {String(turma.origem || '') === 'pre-cadastro-empresarial' && turma.solicitacaoCursoStatus !== 'recusado' && (
+                      <button
+                        type="button"
+                        onClick={() => updateClassRequestStatus(turma.id, { value: 'recusado', motivo: 'Solicitação recusada na análise DRM.' })}
+                        className="btn-danger text-xs"
+                      >
+                        Recusar solicitação
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => updateClassStudentsStatus(turma.id, { field: 'statusCertificado', value: 'aprovado' })}

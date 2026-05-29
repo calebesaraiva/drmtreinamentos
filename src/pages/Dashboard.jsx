@@ -157,6 +157,9 @@ export default function Dashboard() {
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const isBusinessUser = String(user?.role || '').toLowerCase() === 'empresario';
+  const businessCourseRequests = useMemo(() => classes.filter(item => String(item.origem || '') === 'pre-cadastro-empresarial'), [classes]);
+  const businessCourseApproved = useMemo(() => businessCourseRequests.filter(item => item.solicitacaoCursoStatus === 'aprovado').length, [businessCourseRequests]);
+  const businessCoursePending = useMemo(() => businessCourseRequests.filter(item => !item.solicitacaoCursoStatus || item.solicitacaoCursoStatus === 'pendente').length, [businessCourseRequests]);
 
   if (isBusinessUser) {
     return (
@@ -188,6 +191,17 @@ export default function Dashboard() {
           <StatCard icon={Clock} label="Pendentes" value={alunosPendentes} sub="Aguardando validação DRM" color="text-amber-500" />
           <StatCard icon={Award} label="Certificados" value={certificadosEmitidos} sub={`${certificadosEnviados} enviados`} color="text-green-600" />
           <StatCard icon={BookOpen} label="Cursos contratados" value={totalCursos} sub="Da sua empresa" color="text-purple-600" />
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="card">
+            <p className="text-xs text-gray-500">Solicitações de curso aprovadas</p>
+            <p className="text-2xl font-bold text-green-700 mt-1">{businessCourseApproved}</p>
+          </div>
+          <div className="card">
+            <p className="text-xs text-gray-500">Solicitações aguardando aprovação</p>
+            <p className="text-2xl font-bold text-amber-700 mt-1">{businessCoursePending}</p>
+          </div>
         </div>
 
         <div className="card">

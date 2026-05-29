@@ -222,6 +222,15 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  useEffect(() => {
+    const role = String(user?.role || '').toLowerCase();
+    if (role !== 'empresario') return undefined;
+    const timer = setInterval(() => {
+      refreshData();
+    }, 15000);
+    return () => clearInterval(timer);
+  }, [user, refreshData]);
+
   const updateAttendance = useCallback(async (courseId, attendance) => {
     const actorName = user?.name || 'Responsável DRM';
     try {
@@ -385,6 +394,26 @@ export function AppProvider({ children }) {
         return null;
       }
       addNotification('Backend indisponível. Não foi possível atualizar a turma.', 'warning');
+      return null;
+    }
+  }, [addNotification, user]);
+
+  const updateClassRequestStatus = useCallback(async (classId, payload) => {
+    const actorName = user?.name || 'Responsável DRM';
+    const actorRole = user?.role || 'responsavel';
+    try {
+      const result = await api.updateClassRequestStatus(classId, { ...payload, actor: actorName, actorRole });
+      setClasses(prev => prev.map(item => (String(item.id) === String(classId) ? result.class : item)));
+      setApiError(null);
+      addNotification('Solicitação da turma atualizada com sucesso.', 'success');
+      return result;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível atualizar a solicitação da turma.', 'warning');
       return null;
     }
   }, [addNotification, user]);
@@ -557,7 +586,7 @@ export function AppProvider({ children }) {
   const value = {
     user, login, logout,
     students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
-    classes, addManualClass, addCompanyPreRegistration, updateClassStudentsStatus,
+    classes, addManualClass, addCompanyPreRegistration, updateClassStudentsStatus, updateClassRequestStatus,
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,
     sidebarOpen, setSidebarOpen,
