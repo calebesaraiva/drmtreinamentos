@@ -56,6 +56,7 @@ const DATA_FILE = process.env.DATA_FILE || join(__dirname, 'data.json');
 const LOGO_FILE = join(__dirname, '..', 'public', 'brand', 'drm-certi-sem-fundo.png');
 const CERTIFICATE_PAGE_WIDTH = 1123;
 const CERTIFICATE_PAGE_HEIGHT = 794;
+const CERTIFICATE_STANDARD_VERSION = 1;
 const DATABASE_URL = process.env.DATABASE_URL || '';
 const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL || 'https://drmtreinamentos.com';
 const SMTP_HOST = process.env.SMTP_HOST || '';
@@ -195,11 +196,34 @@ async function loadData() {
   return localData;
 }
 
+function normalizeCertificateSettings(payload = {}) {
+  const normalized = {
+    config: mergeCertificateConfig(payload.config || {}),
+    layout: mergeCertificateLayoutPdf(payload.layout || {}),
+    updatedAt: payload.updatedAt || new Date().toISOString(),
+    standardVersion: Number(payload.standardVersion) || 0,
+  };
+
+  if (normalized.standardVersion < CERTIFICATE_STANDARD_VERSION) {
+    return {
+      config: mergeCertificateConfig({}),
+      layout: mergeCertificateLayoutPdf({}),
+      updatedAt: new Date().toISOString(),
+      standardVersion: CERTIFICATE_STANDARD_VERSION,
+    };
+  }
+
+  return {
+    ...normalized,
+    standardVersion: CERTIFICATE_STANDARD_VERSION,
+  };
+}
+
 const initialData = await loadData();
 let students = initialData.students;
 let courses = initialData.courses;
 let classes = initialData.classes || [];
-let certificateSettings = initialData.certificateSettings || {};
+let certificateSettings = normalizeCertificateSettings(initialData.certificateSettings || {});
 let users = mergeEnvUsers(initialData.users || []);
 
 function persistData() {
@@ -220,11 +244,12 @@ function persistData() {
 }
 
 function updateCertificateSettings(payload) {
-  certificateSettings = {
+  certificateSettings = normalizeCertificateSettings({
     config: payload.config && typeof payload.config === 'object' ? payload.config : certificateSettings.config || {},
     layout: payload.layout && typeof payload.layout === 'object' ? payload.layout : certificateSettings.layout || {},
     updatedAt: new Date().toISOString(),
-  };
+    standardVersion: CERTIFICATE_STANDARD_VERSION,
+  });
   persistData();
   return certificateSettings;
 }
