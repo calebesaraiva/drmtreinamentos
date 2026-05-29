@@ -16,6 +16,7 @@ const PAGE_TITLES = {
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',
   '/usuarios': 'Usuários',
+  '/empresas-clientes': 'Empresas Clientes',
   '/configuracoes': 'Configurações',
 };
 

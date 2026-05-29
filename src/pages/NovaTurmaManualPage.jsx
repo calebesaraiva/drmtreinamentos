@@ -7,6 +7,8 @@ import {
 import { useApp } from '../context/AppContext';
 
 const DRAFT_KEY = 'drmNovaTurmaManualDraft';
+const QUICK_DEFAULTS_KEY = 'drmNovaTurmaManualDefaults';
+const LAST_CLASS_KEY = 'drmNovaTurmaManualLastClass';
 const steps = ['Empresa', 'Curso', 'Alunos', 'Revisão', 'Análise/Emissão'];
 const emptyCompany = { nome: '', cnpj: '', contato: '', telefone: '', email: '' };
 const emptyCourseInfo = {
@@ -156,6 +158,7 @@ export default function NovaTurmaManualPage() {
   const [importPreview, setImportPreview] = useState(null);
   const [studentPage, setStudentPage] = useState(1);
   const fileInputRef = useRef(null);
+  const [quickDefaultsLoaded, setQuickDefaultsLoaded] = useState(false);
 
   useEffect(() => {
     try {
@@ -171,6 +174,28 @@ export default function NovaTurmaManualPage() {
       localStorage.removeItem(DRAFT_KEY);
     }
   }, []);
+
+  useEffect(() => {
+    if (quickDefaultsLoaded) return;
+    try {
+      const defaults = JSON.parse(localStorage.getItem(QUICK_DEFAULTS_KEY) || 'null');
+      if (defaults) {
+        setCompany(prev => ({
+          ...prev,
+          nome: prev.nome || defaults.companyName || '',
+        }));
+        setCourseInfo(prev => ({
+          ...prev,
+          horarioInicio: prev.horarioInicio || defaults.horarioInicio || '',
+          local: prev.local || defaults.local || '',
+        }));
+      }
+    } catch {
+      // noop
+    } finally {
+      setQuickDefaultsLoaded(true);
+    }
+  }, [quickDefaultsLoaded]);
 
   useEffect(() => {
     const draft = { step, companyMode, companySearch, company, courseInfo, rows };
@@ -364,12 +389,37 @@ export default function NovaTurmaManualPage() {
         ambienteTeste: company.nome.includes('[TESTE]'),
       });
       if (result) {
+        localStorage.setItem(QUICK_DEFAULTS_KEY, JSON.stringify({
+          companyName: company.nome,
+          horarioInicio: courseInfo.horarioInicio,
+          local: courseInfo.local,
+        }));
+        localStorage.setItem(LAST_CLASS_KEY, JSON.stringify({
+          company,
+          courseInfo,
+        }));
         localStorage.removeItem(DRAFT_KEY);
         setMessage({ type: 'success', text: 'Turma criada e enviada para análise.' });
         setStep(4);
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const applyLastClass = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(LAST_CLASS_KEY) || 'null');
+      if (!saved) {
+        setMessage({ type: 'error', text: 'Nenhuma turma anterior encontrada para duplicar.' });
+        return;
+      }
+      setCompany(saved.company || emptyCompany);
+      setCourseInfo(saved.courseInfo || emptyCourseInfo);
+      setStep(2);
+      setMessage({ type: 'success', text: 'Última turma carregada. Agora revise os alunos e finalize.' });
+    } catch {
+      setMessage({ type: 'error', text: 'Não foi possível carregar a última turma.' });
     }
   };
 
@@ -416,7 +466,10 @@ export default function NovaTurmaManualPage() {
             <h2 className="text-xl font-black text-gray-900">Nova turma manual</h2>
             <p className="text-sm text-gray-500 mt-1">Crie uma turma completa, cole ou importe alunos e envie tudo para análise.</p>
           </div>
-          <button type="button" onClick={clearDraft} className="btn-secondary text-sm">Limpar rascunho</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={applyLastClass} className="btn-secondary text-sm">Usar última turma</button>
+            <button type="button" onClick={clearDraft} className="btn-secondary text-sm">Limpar rascunho</button>
+          </div>
         </div>
         <div className="flex flex-wrap gap-2 mt-5">
           {steps.map((_, index) => <StepButton key={index} index={index} />)}
