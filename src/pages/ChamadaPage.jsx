@@ -236,6 +236,19 @@ export default function ChamadaPage() {
           </div>
         )}
       </div>
+
+      {courseStudents.length > 0 && (
+        <div className="sm:hidden fixed bottom-4 left-4 right-4 z-10">
+          <button
+            onClick={saveAttendance}
+            disabled={saving}
+            className="btn-primary w-full shadow-lg disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Salvar chamada
+          </button>
+        </div>
+      )}
     </div>
   );
 }

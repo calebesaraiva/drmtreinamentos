@@ -702,6 +702,7 @@ export default function AlunosPage() {
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [filterCurso, setFilterCurso] = useState('todos');
+  const [quickFilter, setQuickFilter] = useState('todos');
   const [selectedAluno, setSelectedAluno] = useState(null);
   const [sortField, setSortField] = useState('nome');
   const [sortDir, setSortDir] = useState('asc');
@@ -721,7 +722,14 @@ export default function AlunosPage() {
         s.local.toLowerCase().includes(q);
       const matchStatus = filterStatus === 'todos' || s.statusCadastro === filterStatus;
       const matchCurso = filterCurso === 'todos' || s.nomeCurso === filterCurso;
-      return matchSearch && matchStatus && matchCurso;
+      const matchQuick = (
+        quickFilter === 'todos' ||
+        (quickFilter === 'pendencias' && (s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente')) ||
+        (quickFilter === 'cert-pronto' && s.statusCertificado === 'aprovado' && !s.certificadoEnviado) ||
+        (quickFilter === 'sem-email' && !String(s.email || '').trim()) ||
+        (quickFilter === 'recusados' && (s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado'))
+      );
+      return matchSearch && matchStatus && matchCurso && matchQuick;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -771,6 +779,26 @@ export default function AlunosPage() {
     <div className="space-y-5">
       {/* Filters */}
       <div className="card">
+        <div className="flex flex-wrap gap-2 mb-3">
+          {[
+            { id: 'todos', label: 'Todos' },
+            { id: 'pendencias', label: 'Pendências' },
+            { id: 'cert-pronto', label: 'Certificado pronto' },
+            { id: 'sem-email', label: 'Sem e-mail' },
+            { id: 'recusados', label: 'Recusados' },
+          ].map(item => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setQuickFilter(item.id)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                quickFilter === item.id ? 'bg-blue-700 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
         <div className="flex flex-col xl:flex-row gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -778,7 +806,7 @@ export default function AlunosPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Buscar por nome, CPF, e-mail, empresa, curso ou local..."
+              placeholder="Buscar aluno, CPF, e-mail, empresa, curso..."
               className="input-field pl-9"
             />
             {search && (

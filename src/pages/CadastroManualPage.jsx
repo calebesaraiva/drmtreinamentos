@@ -30,12 +30,15 @@ function triggerDownload(blob, filename = 'certificado.pdf') {
 
 export default function CadastroManualPage() {
   const { courses, addManualStudent, refreshData, user } = useApp();
+  const [mode, setMode] = useState('single');
   const [form, setForm] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [status, setStatus] = useState(null);
   const [createdStudent, setCreatedStudent] = useState(null);
+  const [createdBatch, setCreatedBatch] = useState([]);
+  const [batchText, setBatchText] = useState('');
   const [usarDadosCursoSelecionado, setUsarDadosCursoSelecionado] = useState(true);
 
   const activeCourses = useMemo(
@@ -63,6 +66,24 @@ export default function CadastroManualPage() {
     });
     setErrors(next);
     return Object.keys(next).length === 0;
+  };
+
+  const parseBatchRows = () => {
+    const rows = String(batchText || '')
+      .split(/\r?\n/)
+      .map(line => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const cols = line.includes('\t') ? line.split('\t') : line.split(';');
+        return {
+          nome: String(cols[0] || '').trim(),
+          cpf: String(cols[1] || '').trim(),
+          email: String(cols[2] || '').trim(),
+          telefone: String(cols[3] || '').trim(),
+          cargo: String(cols[4] || '').trim(),
+        };
+      });
+    return rows;
   };
 
   const handleCreate = async () => {
@@ -98,6 +119,59 @@ export default function CadastroManualPage() {
       await refreshData();
     } catch (error) {
       setStatus({ type: 'error', text: error?.message || 'Não foi possível cadastrar o aluno.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCreateBatch = async () => {
+    const required = ['cursoId', 'empresa'];
+    const nextErrors = {};
+    required.forEach((field) => {
+      if (!String(form[field] || '').trim()) nextErrors[field] = 'Obrigatório';
+    });
+    const rows = parseBatchRows();
+    if (!rows.length) nextErrors.batch = 'Informe pelo menos 1 aluno no bloco de importação.';
+    const invalid = rows.find(row => !row.nome || !row.cpf || !row.email || !row.telefone || !row.cargo);
+    if (invalid) nextErrors.batch = 'Cada linha deve ter: nome;cpf;email;telefone;cargo';
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+
+    setSaving(true);
+    setStatus(null);
+    setCreatedBatch([]);
+    try {
+      const created = [];
+      for (const row of rows) {
+        // eslint-disable-next-line no-await-in-loop
+        const student = await addManualStudent({
+          ...form,
+          ...row,
+          emitirCertificado: true,
+          presenca: 100,
+          notaProva: 10,
+          data: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
+          horarioInicio: usarDadosCursoSelecionado ? (selectedCourse?.horarioInicio || '') : form.horarioInicioReal,
+          local: usarDadosCursoSelecionado ? (selectedCourse?.local || '') : form.localReal,
+          duracao: usarDadosCursoSelecionado ? (selectedCourse?.duracao || '') : (form.duracaoReal || selectedCourse?.duracao || ''),
+          periodoInicio: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
+          periodoFim: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
+        });
+        if (student) created.push(student);
+      }
+      setCreatedBatch(created);
+      setStatus({
+        type: created.length ? 'success' : 'error',
+        text: created.length
+          ? `${created.length} aluno(s) cadastrados e certificados autorizados.`
+          : 'Nenhum aluno foi cadastrado. Verifique os dados.',
+      });
+      if (created.length) {
+        setBatchText('');
+      }
+      await refreshData();
     } finally {
       setSaving(false);
     }
@@ -151,6 +225,32 @@ export default function CadastroManualPage() {
     }
   };
 
+  const handleBatchCertificates = async (action) => {
+    if (!createdBatch.length) return;
+    setActionLoading(action);
+    setStatus(null);
+    try {
+      const result = await api.exportCertificates({
+        studentIds: createdBatch.map(item => String(item.id)),
+        action,
+        signatureType: 'digital',
+        actor: user?.name || 'Responsável DRM',
+        actorRole: user?.role || 'responsavel',
+      });
+      if (action === 'pdf') {
+        triggerDownload(result.blob, result.filename || 'certificados.zip');
+        setStatus({ type: 'success', text: 'ZIP/PDF dos certificados gerado com sucesso.' });
+      } else {
+        setStatus({ type: 'success', text: 'Envio de certificados por e-mail concluído.' });
+      }
+      await refreshData();
+    } catch (error) {
+      setStatus({ type: 'error', text: error?.message || 'Não foi possível processar os certificados em lote.' });
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   const input = (field, label, type = 'text', placeholder = '') => (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -182,6 +282,15 @@ export default function CadastroManualPage() {
       </div>
 
       <div className="card max-w-5xl mx-auto space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setMode('single')} className={mode === 'single' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>
+            Cadastro individual
+          </button>
+          <button type="button" onClick={() => setMode('batch')} className={mode === 'batch' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>
+            Cadastro em lote (mesmo curso)
+          </button>
+        </div>
+
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Curso *</label>
           <select
@@ -226,25 +335,56 @@ export default function CadastroManualPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
-          {input('cpf', 'CPF *', 'text', '000.000.000-00')}
-          {input('email', 'E-mail *', 'email', 'aluno@email.com')}
-          {input('telefone', 'Telefone *', 'text', '(00) 00000-0000')}
-          {input('empresa', 'Empresa *', 'text', 'Empresa do aluno')}
-          {input('cargo', 'Cargo/Função *', 'text', 'Função no treinamento')}
-        </div>
+        {mode === 'single' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
+            {input('cpf', 'CPF *', 'text', '000.000.000-00')}
+            {input('email', 'E-mail *', 'email', 'aluno@email.com')}
+            {input('telefone', 'Telefone *', 'text', '(00) 00000-0000')}
+            {input('empresa', 'Empresa *', 'text', 'Empresa do aluno')}
+            {input('cargo', 'Cargo/Função *', 'text', 'Função no treinamento')}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {input('empresa', 'Empresa *', 'text', 'Empresa dos alunos')}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Alunos em lote</label>
+              <textarea
+                value={batchText}
+                onChange={(event) => { setBatchText(event.target.value); setErrors(prev => ({ ...prev, batch: null })); }}
+                rows={8}
+                className={`input-field resize-y ${errors.batch ? 'border-red-300 focus:ring-red-200' : ''}`}
+                placeholder={'1 aluno por linha no formato:\nNome;CPF;Email;Telefone;Cargo\n\nTambém aceita colado do Excel (colunas separadas por TAB).'}
+              />
+              {errors.batch && <p className="text-xs text-red-500 mt-1">{errors.batch}</p>}
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end pt-2 border-t border-gray-100">
-          <button
-            type="button"
-            onClick={handleCreate}
-            disabled={saving}
-            className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            {saving ? 'Cadastrando...' : 'Cadastrar e autorizar certificado'}
-          </button>
+          {mode === 'single' ? (
+            <button
+              type="button"
+              onClick={handleCreate}
+              disabled={saving}
+              className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {saving ? 'Cadastrando...' : 'Cadastrar e autorizar certificado'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleCreateBatch}
+              disabled={saving}
+              className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+              {saving ? 'Processando lote...' : 'Cadastrar lote e autorizar certificados'}
+            </button>
+          )}
         </div>
 
         {createdStudent && (
@@ -281,6 +421,32 @@ export default function CadastroManualPage() {
               >
                 {actionLoading === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
                 Enviar por e-mail
+              </button>
+            </div>
+          </div>
+        )}
+
+        {createdBatch.length > 0 && (
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+            <p className="text-sm font-bold text-blue-900">{createdBatch.length} aluno(s) criados neste lote.</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={() => handleBatchCertificates('pdf')}
+                disabled={actionLoading !== ''}
+                className="btn-secondary disabled:opacity-60"
+              >
+                {actionLoading === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                Baixar certificados (PDF/ZIP)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleBatchCertificates('email')}
+                disabled={actionLoading !== ''}
+                className="btn-primary disabled:opacity-60"
+              >
+                {actionLoading === 'email' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                Enviar todos por e-mail
               </button>
             </div>
           </div>

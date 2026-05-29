@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Users, Award, ClipboardCheck, QrCode,
-  TrendingUp, AlertTriangle, CheckCircle, Clock,
-  ArrowRight, BookOpen, UserPlus
+  AlertTriangle, CheckCircle, Clock,
+  ArrowRight, BookOpen, UserPlus, Building2, Send, PlayCircle
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -67,8 +67,35 @@ function buildDashboardFallback(students, courses) {
   };
 }
 
+function getNextSuggestedAction({ alunosPendentes, certificadosEmitidos, certificadosEnviados, totalCursos }) {
+  if (totalCursos === 0) return { label: 'Iniciar primeira turma', path: '/qrcode' };
+  if (alunosPendentes > 0) return { label: 'Revisar pendências da análise', path: '/analise' };
+  if (certificadosEmitidos > certificadosEnviados) return { label: 'Enviar certificados pendentes', path: '/certificados' };
+  return { label: 'Cadastrar turma rapidamente', path: '/qrcode' };
+}
+
+function GoalCard({ icon: Icon, title, description, onClick, color }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-md ${color}`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-white/80 border border-white flex items-center justify-center">
+          <Icon className="w-5 h-5" />
+        </div>
+        <div>
+          <p className="font-bold">{title}</p>
+          <p className="text-xs opacity-80 mt-0.5">{description}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function Dashboard() {
-  const { students, courses, user, apiError } = useApp();
+  const { students, courses, classes, user, apiError } = useApp();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
@@ -111,6 +138,21 @@ export default function Dashboard() {
   const recentStudents = dashboard.recentStudents || [];
   const monthlyChart = dashboard.charts?.monthly || CHART_DATA_MONTHLY;
   const connectionWarning = dashboardError || apiError;
+  const nextAction = getNextSuggestedAction({ alunosPendentes, certificadosEmitidos, certificadosEnviados, totalCursos });
+  const certificatesToday = students.filter(s => s.statusCertificado === 'aprovado' && s.certificadoAutorizadoEm && s.certificadoAutorizadoEm.startsWith(new Date().toISOString().slice(0, 10))).length;
+  const avgClassSetupMinutes = useMemo(() => {
+    if (!Array.isArray(classes) || classes.length === 0) return '-';
+    const values = classes
+      .map(item => {
+        const created = Date.parse(item.createdAt || item.criadaEm || '');
+        const firstHistory = Array.isArray(item.historico) && item.historico[0]?.em ? Date.parse(item.historico[0].em) : NaN;
+        if (Number.isNaN(created) || Number.isNaN(firstHistory)) return null;
+        return Math.max(1, Math.round((firstHistory - created) / 60000));
+      })
+      .filter(value => Number.isFinite(value));
+    if (!values.length) return '-';
+    return Math.round(values.reduce((acc, item) => acc + item, 0) / values.length);
+  }, [classes]);
 
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
@@ -128,7 +170,7 @@ export default function Dashboard() {
       <div className="bg-gradient-to-r from-blue-900 to-blue-700 rounded-2xl p-6 text-white">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold">{saudacao}, {user?.name?.split(' ')[0]}! 👋</h2>
+            <h2 className="text-xl font-bold">{saudacao}, {user?.name?.split(' ')[0]}!</h2>
             <p className="text-blue-200 text-sm mt-1">
               Você tem <span className="font-semibold text-white">{alunosPendentes} cadastros</span> aguardando análise.
             </p>
@@ -138,29 +180,18 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex flex-wrap gap-3 mt-4">
-          <button
-            onClick={() => navigate('/analise')}
-            className="bg-white text-blue-800 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1.5"
-          >
-            <ClipboardCheck className="w-4 h-4" />
-            Ver Análises
-            <ArrowRight className="w-3 h-3" />
-          </button>
-          <button
-            onClick={() => navigate('/qrcode')}
-            className="bg-blue-800 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-900 transition-colors flex items-center gap-1.5"
-          >
-            <QrCode className="w-4 h-4" />
-            Novo QR Code
-          </button>
-          <button
-            onClick={() => navigate('/nova-turma-manual')}
-            className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-1.5"
-          >
-            <UserPlus className="w-4 h-4" />
-            Nova turma manual
+          <button onClick={() => navigate(nextAction.path)} className="bg-white text-blue-800 text-sm font-semibold px-4 py-2 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-1.5">
+            <PlayCircle className="w-4 h-4" />
+            Próximo passo sugerido: {nextAction.label}
           </button>
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+        <GoalCard icon={QrCode} title="Iniciar turma" description="Curso + empresa + data em segundos" onClick={() => navigate('/qrcode')} color="bg-blue-50 border-blue-100 text-blue-900" />
+        <GoalCard icon={UserPlus} title="Aluno retroativo" description="Cadastro e certificado rápido" onClick={() => navigate('/cadastro-manual')} color="bg-green-50 border-green-100 text-green-900" />
+        <GoalCard icon={Send} title="Emitir certificados" description="Baixar PDF/ZIP ou enviar e-mail" onClick={() => navigate('/certificados')} color="bg-amber-50 border-amber-100 text-amber-900" />
+        <GoalCard icon={Building2} title="Ver clientes" description="Empresas, funcionários e certificados" onClick={() => navigate('/empresas-clientes')} color="bg-slate-50 border-slate-200 text-slate-900" />
       </div>
 
       {/* Stats */}
@@ -196,6 +227,14 @@ export default function Dashboard() {
           sub="Cursos ativos"
           color="text-purple-600"
           onClick={() => navigate('/qrcode')}
+        />
+        <StatCard
+          icon={Clock}
+          label="Tempo médio de setup"
+          value={avgClassSetupMinutes === '-' ? '-' : `${avgClassSetupMinutes} min`}
+          sub={`${certificatesToday} certificados aprovados hoje`}
+          color="text-slate-600"
+          onClick={() => navigate('/nova-turma-manual')}
         />
       </div>
 

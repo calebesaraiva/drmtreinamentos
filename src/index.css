@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -39,7 +40,7 @@
     box-sizing: border-box;
   }
   body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Manrope', system-ui, -apple-system, sans-serif;
     background-color: var(--cor-fundo);
     color: var(--cor-texto);
   }
@@ -62,10 +63,10 @@
     @apply bg-amber-500 hover:bg-amber-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors duration-200 flex items-center gap-2 justify-center;
   }
   .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
+    @apply bg-white rounded-2xl shadow-sm border border-gray-100 p-6;
   }
   .input-field {
-    @apply w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-800;
+    @apply w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 text-gray-800;
   }
   .badge-green {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800;
@@ -82,6 +83,10 @@
   .badge-gray {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700;
   }
+}
+
+.card:hover {
+  box-shadow: 0 10px 28px -18px rgba(15, 23, 42, 0.35);
 }
 
 /* Scrollbar */
