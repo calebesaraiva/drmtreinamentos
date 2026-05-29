@@ -42,6 +42,21 @@ export default function PublicCoursesPage() {
     return () => { ignore = true; };
   }, []);
 
+  useEffect(() => {
+    if (!courses.length || selected) return;
+    const params = new URLSearchParams(window.location.search);
+    const courseId = params.get('courseId');
+    const qrCode = params.get('qrCode');
+    if (!courseId && !qrCode) return;
+    const matched = courses.find((course) => (
+      (courseId && String(course.id) === courseId) ||
+      (qrCode && String(course.qrCode || '').toLowerCase() === qrCode.toLowerCase())
+    ));
+    if (matched) {
+      setSelected(matched);
+    }
+  }, [courses, selected]);
+
   const chooseCourse = (course) => {
     setSelected(course);
     setVerified(null);

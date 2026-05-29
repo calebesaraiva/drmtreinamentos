@@ -397,9 +397,10 @@ export function AppProvider({ children }) {
 
   const updateStudentStatus = useCallback(async (studentId, field, value, motivo = null) => {
     const actorName = user?.name || 'Responsável DRM';
+    const actorRole = user?.role || 'responsavel';
 
     try {
-      const updatedStudent = await api.updateStudentStatus(studentId, field, value, motivo, actorName);
+      const updatedStudent = await api.updateStudentStatus(studentId, field, value, motivo, actorName, actorRole);
       setStudents(prev => prev.map(s => (s.id === studentId ? updatedStudent : s)));
       setApiError(null);
       if (field === 'statusCertificado' && value === 'aprovado') {

@@ -1785,6 +1785,9 @@ function updateAttendance(courseId, payload) {
 }
 
 async function updateStudentStatus(id, payload) {
+  if (!canManageCertificates(payload)) {
+    return { status: 403, error: 'Você não tem permissão para aprovar, recusar ou alterar certificados deste aluno.' };
+  }
   const { field, value, motivo = null, actor = 'Responsável DRM' } = payload;
   if (!allowedStatusFields.has(field)) {
     return { status: 400, error: 'Campo de status invalido.' };
@@ -2371,7 +2374,10 @@ const server = createServer(async (req, res) => {
       badRequest(res, 'JSON invalido.');
       return;
     }
-    const result = await updateStudentStatus(parts[2], body);
+    const result = await updateStudentStatus(parts[2], {
+      ...body,
+      actorRole: req.auth?.role || body.actorRole,
+    });
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;

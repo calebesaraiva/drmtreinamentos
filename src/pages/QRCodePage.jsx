@@ -31,6 +31,7 @@ function QRCard({ course, onOpen, onDownload, onCopy, copied }) {
   const instrutorCargo = course.instrutorCargo || course.cargoInstrutor || course.instrutorFuncao;
   const instrutorRegistro = course.instrutorRegistro || course.registroInstrutor || course.creaInstrutor || course.cftInstrutor;
   const temInstrutor = course.temInstrutor !== false && Boolean(instrutorNome || instrutorCargo || instrutorRegistro);
+  const publicCourseUrl = `${window.location.origin}/cursos?courseId=${encodeURIComponent(course.id)}`;
 
   return (
     <div
@@ -43,7 +44,7 @@ function QRCard({ course, onOpen, onDownload, onCopy, copied }) {
           <div className="bg-white p-3 rounded-xl border-2 border-gray-200 shadow-sm">
             <QRCodeCanvas
               data-id={course.id}
-              value={`DRM|${course.qrCode}|${course.nomeCurso}|${course.empresaContratante || ''}|${course.local}|${course.data}|${course.horarioInicio}|${temInstrutor ? 'COM_INSTRUTOR' : 'SEM_INSTRUTOR'}|${temInstrutor ? instrutorNome || '' : ''}|${temInstrutor ? instrutorCargo || '' : ''}|${temInstrutor ? instrutorRegistro || '' : ''}`}
+              value={publicCourseUrl}
               size={110}
               bgColor="#FFFFFF"
               fgColor="#000000"
@@ -123,10 +124,10 @@ function QRCard({ course, onOpen, onDownload, onCopy, copied }) {
               )}
             </button>
             <button
-              onClick={(event) => { event.stopPropagation(); onCopy(`${window.location.origin}/cursos`); }}
+              onClick={(event) => { event.stopPropagation(); onCopy(publicCourseUrl); }}
               className="flex items-center gap-1.5 text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-colors"
             >
-              {copied === `${window.location.origin}/cursos` ? (
+              {copied === publicCourseUrl ? (
                 <><Check className="w-3.5 h-3.5 text-green-600" />Link copiado</>
               ) : (
                 <><Copy className="w-3.5 h-3.5" />Link aluno</>

@@ -154,9 +154,9 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify({ ...payload, actor }),
   }),
-  updateStudentStatus: (studentId, field, value, motivo = null, actor = 'Responsável DRM') => request(`/api/students/${studentId}/status`, {
+  updateStudentStatus: (studentId, field, value, motivo = null, actor = 'Responsável DRM', actorRole = 'responsavel') => request(`/api/students/${studentId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ field, value, motivo, actor }),
+    body: JSON.stringify({ field, value, motivo, actor, actorRole }),
   }),
   markCertificateSent: (studentId) => request(`/api/students/${studentId}/certificate-sent`, {
     method: 'PATCH',
