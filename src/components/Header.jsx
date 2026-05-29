@@ -17,6 +17,7 @@ const PAGE_TITLES = {
   '/relatorios': 'Relatórios e Análises',
   '/usuarios': 'Usuários',
   '/empresas-clientes': 'Empresas Clientes',
+  '/pre-cadastro-empresarial': 'Pré-cadastro Empresarial',
   '/configuracoes': 'Configurações',
 };
 

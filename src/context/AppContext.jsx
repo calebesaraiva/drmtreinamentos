@@ -131,7 +131,7 @@ export function AppProvider({ children }) {
       setUser(result.user);
       localStorage.setItem('drmUser', JSON.stringify(result.user));
       api.setToken(result.token);
-      return { success: true };
+      return { success: true, user: result.user };
     } catch (error) {
       const message = error?.message || 'Usuário ou senha inválidos.';
       setApiError(message);
@@ -347,6 +347,27 @@ export function AppProvider({ children }) {
     }
   }, [addNotification, user]);
 
+  const addCompanyPreRegistration = useCallback(async (payload) => {
+    const actorName = user?.name || 'Empresário';
+    const actorRole = user?.role || 'empresario';
+    try {
+      const result = await api.createCompanyPreRegistration({ ...payload, actor: actorName, actorRole });
+      setClasses(prev => [...prev, result.class]);
+      setStudents(prev => [...prev, ...result.students]);
+      setApiError(null);
+      addNotification('Pré-cadastro enviado para validação do responsável DRM.', 'success');
+      return result;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível enviar o pré-cadastro.', 'warning');
+      return null;
+    }
+  }, [addNotification, user]);
+
   const updateClassStudentsStatus = useCallback(async (classId, payload) => {
     const actorName = user?.name || 'Responsável DRM';
     const actorRole = user?.role || 'responsavel';
@@ -536,7 +557,7 @@ export function AppProvider({ children }) {
   const value = {
     user, login, logout,
     students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
-    classes, addManualClass, updateClassStudentsStatus,
+    classes, addManualClass, addCompanyPreRegistration, updateClassStudentsStatus,
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,
     sidebarOpen, setSidebarOpen,

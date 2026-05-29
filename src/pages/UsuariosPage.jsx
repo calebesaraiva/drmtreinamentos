@@ -143,6 +143,7 @@ export default function UsuariosPage() {
           <select className="input-field" value={form.role} onChange={(e) => setForm(p => ({ ...p, role: e.target.value }))}>
             <option value="instrutor">Instrutor</option>
             <option value="usuario">Usuário</option>
+            <option value="empresario">Empresário</option>
             <option value="responsavel">Responsável</option>
             <option value="admin">Administrador</option>
           </select>
@@ -218,6 +219,7 @@ export default function UsuariosPage() {
                       >
                         <option value="instrutor">Instrutor</option>
                         <option value="usuario">Usuário</option>
+                        <option value="empresario">Empresário</option>
                         <option value="responsavel">Responsável</option>
                         <option value="admin">Administrador</option>
                       </select>

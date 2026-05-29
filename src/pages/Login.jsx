@@ -29,7 +29,9 @@ export default function Login() {
     const result = await login(username, password);
     setLoading(false);
     if (result.success) {
-      navigate(redirectTo, { replace: true });
+      const role = String(result.user?.role || '').toLowerCase();
+      const target = location.state?.from || (role === 'empresario' ? '/pre-cadastro-empresarial' : '/dashboard');
+      navigate(target, { replace: true });
     } else {
       setError(result.error);
     }

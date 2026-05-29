@@ -10,23 +10,25 @@ import BrandLogo from './BrandLogo';
 
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/qrcode', icon: QrCode, label: 'Cursos e QR Code' },
-  { to: '/cronograma', icon: BookOpenCheck, label: 'Cronograma' },
-  { to: '/chamada', icon: ListChecks, label: 'Chamada' },
-  { to: '/alunos', icon: Users, label: 'Alunos' },
-  { to: '/cadastro-manual', icon: UserPlus, label: 'Cadastro rápido aluno', highlight: true },
-  { to: '/nova-turma-manual', icon: UserPlus, label: 'Nova turma manual', highlight: true },
-  { to: '/analise', icon: ClipboardCheck, label: 'Análise' },
-  { to: '/certificados', icon: Send, label: 'Enviar Certificados' },
-  { to: '/relatorios', icon: BarChart3, label: 'Relatórios' },
-  { to: '/usuarios', icon: UserCog, label: 'Usuários' },
-  { to: '/empresas-clientes', icon: Building2, label: 'Empresas clientes' },
-  { to: '/configuracoes', icon: Settings, label: 'Configurações' },
+  { to: '/pre-cadastro-empresarial', icon: Building2, label: 'Pré-cadastro empresarial', highlight: true, visibleRoles: ['empresario'] },
+  { to: '/qrcode', icon: QrCode, label: 'Cursos e QR Code', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
+  { to: '/cronograma', icon: BookOpenCheck, label: 'Cronograma', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
+  { to: '/chamada', icon: ListChecks, label: 'Chamada', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
+  { to: '/alunos', icon: Users, label: 'Alunos', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
+  { to: '/cadastro-manual', icon: UserPlus, label: 'Cadastro rápido aluno', highlight: true, visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/nova-turma-manual', icon: UserPlus, label: 'Nova turma manual', highlight: true, visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/analise', icon: ClipboardCheck, label: 'Análise', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/certificados', icon: Send, label: 'Enviar Certificados', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/relatorios', icon: BarChart3, label: 'Relatórios', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/usuarios', icon: UserCog, label: 'Usuários', visibleRoles: ['admin', 'responsavel'] },
+  { to: '/empresas-clientes', icon: Building2, label: 'Empresas clientes', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/configuracoes', icon: Settings, label: 'Configurações', visibleRoles: ['admin', 'responsavel', 'usuario'] },
 ];
 
 export default function Sidebar() {
   const { sidebarOpen, setSidebarOpen, user, logout } = useApp();
   const navigate = useNavigate();
+  const role = String(user?.role || '').toLowerCase();
 
   const handleLogout = () => {
     logout();
@@ -85,7 +87,9 @@ export default function Sidebar() {
         {/* Nav */}
         <nav className="flex-1 py-4 overflow-y-auto">
           <p className="px-4 text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2">Menu</p>
-          {navItems.map(({ to, icon: Icon, label, highlight }) => (
+          {navItems
+            .filter(item => !Array.isArray(item.visibleRoles) || item.visibleRoles.includes(role))
+            .map(({ to, icon: Icon, label, highlight }) => (
             <NavLink
               key={to}
               to={to}

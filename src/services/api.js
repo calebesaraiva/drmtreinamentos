@@ -129,6 +129,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
+  createCompanyPreRegistration: (payload) => request('/api/company/pre-registrations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   updateClassStudentsStatus: (classId, payload) => request(`/api/classes/${classId}/students-status`, {
     method: 'PATCH',
     body: JSON.stringify(payload),

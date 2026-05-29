@@ -421,7 +421,7 @@ async function readJson(req) {
   }
 }
 
-const allowedUserRoles = new Set(['admin', 'responsavel', 'usuario', 'instrutor']);
+const allowedUserRoles = new Set(['admin', 'responsavel', 'usuario', 'instrutor', 'empresario']);
 
 function normalizeUserRole(role) {
   const normalized = String(role || '').trim().toLowerCase();
@@ -1723,6 +1723,112 @@ function createManualClass(payload) {
   return { class: enrichClass(turma), students: newStudents };
 }
 
+function createCompanyPreRegistration(payload) {
+  const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
+  if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
+
+  const empresaNome = String(payload.empresaNome || payload.empresa?.nome || '').trim();
+  if (!empresaNome) return { status: 400, error: 'Empresa e obrigatoria.' };
+
+  const rows = Array.isArray(payload.alunos) ? payload.alunos : [];
+  if (rows.length === 0) return { status: 400, error: 'Informe ao menos um funcionario.' };
+
+  const requiredStudent = ['nome', 'cpf', 'telefone'];
+  const invalidIndex = rows.findIndex(row => requiredStudent.some(field => !String(row[field] || '').trim()));
+  if (invalidIndex !== -1) return { status: 400, error: `Funcionario ${invalidIndex + 1} possui campos obrigatorios vazios.` };
+
+  const cpfSet = new Set();
+  for (const row of rows) {
+    const cpf = String(row.cpf || '').replace(/\D/g, '');
+    if (cpfSet.has(cpf)) return { status: 409, error: `CPF duplicado no pre-cadastro: ${row.cpf}.` };
+    cpfSet.add(cpf);
+    const duplicate = students.find(student => (
+      String(student.cursoId) === String(course.id) &&
+      String(student.cpf || '').replace(/\D/g, '') === cpf
+    ));
+    if (duplicate) return { status: 409, error: `CPF ja cadastrado para este curso: ${row.cpf}.` };
+  }
+
+  const actor = actorLabel(payload);
+  const actorRole = payload.actorRole || 'empresario';
+  const now = new Date().toISOString();
+  const classDuration = String(payload.duracao || course.duracao || '').trim() || '8 horas';
+  const nextClassId = classes.reduce((max, turma) => Math.max(max, Number(turma.id) || 0), 0) + 1;
+  const turma = {
+    id: nextClassId,
+    nome: payload.nome || `Pré-cadastro ${course.nomeCurso} - ${empresaNome}`,
+    empresa: {
+      nome: empresaNome,
+      cnpj: String(payload.empresaCnpj || '').trim(),
+      contato: String(payload.empresaContato || '').trim(),
+      telefone: String(payload.empresaTelefone || '').trim(),
+      email: String(payload.empresaEmail || '').trim(),
+    },
+    cursoId: course.id,
+    nomeCurso: course.nomeCurso,
+    cargaHoraria: classDuration,
+    validade: payload.validade || certificateSettings.config?.validadeAnos || '',
+    modeloCertificado: payload.modeloCertificado || certificateSettings.config?.tituloCertificado || 'CERTIFICADO',
+    instrutorNome: payload.instrutorNome || course.instrutorNome || course.instrutor || '',
+    instrutorCargo: payload.instrutorCargo || course.instrutorCargo || '',
+    instrutorRegistro: payload.instrutorRegistro || course.instrutorRegistro || '',
+    local: payload.local || course.local,
+    data: payload.data || course.data,
+    horarioInicio: payload.horarioInicio || course.horarioInicio,
+    periodoInicio: payload.periodoInicio || payload.data || course.data,
+    periodoFim: payload.periodoFim || payload.data || course.data,
+    status: 'em_analise',
+    origem: 'pre-cadastro-empresarial',
+    criadoEm: now,
+    criadoPor: actor,
+    historico: [
+      { tipo: 'pre-cadastro', ator: actor, perfil: actorRole, em: now, quantidade: rows.length, detalhe: `${rows.length} funcionario(s) enviados para validacao DRM.` },
+    ],
+  };
+
+  const nextStudentStart = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
+  const newStudents = rows.map((row, index) => ({
+    id: nextStudentStart + index,
+    nome: String(row.nome).trim(),
+    cpf: String(row.cpf).trim(),
+    email: String(row.email || '').trim(),
+    telefone: String(row.telefone).trim(),
+    empresa: empresaNome,
+    cargo: String(row.cargo || 'Funcionário').trim(),
+    cursoId: course.id,
+    turmaId: turma.id,
+    turmaNome: turma.nome,
+    nomeCurso: course.nomeCurso,
+    local: turma.local,
+    data: turma.data,
+    horarioInicio: turma.horarioInicio,
+    duracao: classDuration,
+    periodoInicio: turma.periodoInicio,
+    periodoFim: turma.periodoFim,
+    temInstrutor: course.temInstrutor,
+    instrutor: turma.instrutorNome,
+    instrutorNome: turma.instrutorNome,
+    instrutorCargo: turma.instrutorCargo,
+    instrutorRegistro: turma.instrutorRegistro,
+    statusCadastro: 'pendente',
+    statusCertificado: 'pendente',
+    certificadoEnviado: false,
+    dataEnvio: null,
+    presente: true,
+    presenca: 100,
+    notaProva: 10,
+    foto: null,
+    motivoRecusa: null,
+    origemCadastro: 'pre-cadastro-empresarial',
+    inscritoEm: now,
+  }));
+
+  classes = [...classes, turma];
+  students = [...students, ...newStudents];
+  persistData();
+  return { class: enrichClass(turma), students: newStudents };
+}
+
 function updateClassStudentsStatus(id, payload) {
   if (!canManageCertificates(payload)) {
     return { status: 403, error: 'Você não tem permissão para aprovar, recusar ou alterar certificados desta turma.' };
@@ -2282,6 +2388,30 @@ const server = createServer(async (req, res) => {
       return;
     }
     const result = createManualClass(body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 201, result);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/company/pre-registrations') {
+    const role = String(req.auth?.role || '').toLowerCase();
+    if (!['empresario', 'responsavel', 'admin'].includes(role)) {
+      sendJson(res, 403, { error: 'Você não tem permissão para enviar pré-cadastro empresarial.' });
+      return;
+    }
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = createCompanyPreRegistration({
+      ...body,
+      actor: req.auth?.name || body.actor || 'Empresário',
+      actorRole: req.auth?.role || body.actorRole || 'empresario',
+    });
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;
