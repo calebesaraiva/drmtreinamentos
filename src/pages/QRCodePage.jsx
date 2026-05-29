@@ -5,6 +5,7 @@ import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
 import CertificateDesigner, { getStoredCertificateLayout, saveCertificateLayout } from '../components/CertificateDesigner';
 import { defaultCertificateConfig, mergeCertificateConfig } from '../data/certificateDefaults';
+import { NR_CATALOG } from '../data/nrCatalog';
 import BrandLogo from '../components/BrandLogo';
 import { api } from '../services/api';
 
@@ -161,6 +162,16 @@ export default function QRCodePage() {
   const [copied, setCopied] = useState(null);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickStatus, setQuickStatus] = useState(null);
+  const [quickForm, setQuickForm] = useState({
+    templateCode: NR_CATALOG[0]?.code || '',
+    empresaContratante: '',
+    local: '',
+    data: '',
+    horarioInicio: '08:00',
+    maxAlunos: '30',
+  });
   const [layoutSaved, setLayoutSaved] = useState(false);
   const [certificateLayout, setCertificateLayout] = useState(() => getStoredCertificateLayout());
   const [certificateConfig, setCertificateConfig] = useState(() => {
@@ -313,7 +324,8 @@ export default function QRCodePage() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const filteredCourses = courses.filter(c =>
+  const listedCourses = courses.filter(course => course.tipoCurso !== 'modelo');
+  const filteredCourses = listedCourses.filter(c =>
     c.nomeCurso?.toLowerCase().includes(search.toLowerCase()) ||
     c.descricao?.toLowerCase().includes(search.toLowerCase()) ||
     c.empresaContratante?.toLowerCase().includes(search.toLowerCase()) ||
@@ -325,6 +337,7 @@ export default function QRCodePage() {
     c.qrCode?.toLowerCase().includes(search.toLowerCase()) ||
     c.data?.includes(search)
   );
+  const templateCourses = courses.filter(course => course.tipoCurso === 'modelo');
 
   const field = (name, label, type = 'text', placeholder = '') => (
     <div>
@@ -340,14 +353,122 @@ export default function QRCodePage() {
     </div>
   );
 
+  const handleQuickStart = async () => {
+    const template = templateCourses.find(course => course.codigoCatalogo === quickForm.templateCode)
+      || NR_CATALOG.find(course => course.code === quickForm.templateCode);
+    if (!template) {
+      setQuickStatus({ type: 'error', text: 'Selecione um curso NR válido.' });
+      return;
+    }
+    if (!quickForm.empresaContratante.trim() || !quickForm.local.trim() || !quickForm.data || !quickForm.horarioInicio) {
+      setQuickStatus({ type: 'error', text: 'Preencha empresa, local, data e horário.' });
+      return;
+    }
+    const maxAlunos = Number(quickForm.maxAlunos || 30);
+    if (!Number.isFinite(maxAlunos) || maxAlunos <= 0) {
+      setQuickStatus({ type: 'error', text: 'Informe uma quantidade máxima válida.' });
+      return;
+    }
+
+    setQuickSaving(true);
+    setQuickStatus(null);
+    try {
+      const payload = {
+        nomeCurso: template.nomeCurso,
+        descricao: template.descricao || '',
+        empresaContratante: quickForm.empresaContratante.trim(),
+        local: quickForm.local.trim(),
+        data: quickForm.data,
+        horarioInicio: quickForm.horarioInicio,
+        duracao: template.duracao || '8 horas',
+        maxAlunos,
+        status: 'ativo',
+        temInstrutor: template.temInstrutor !== false,
+        instrutor: template.instrutor || '',
+        instrutorNome: template.instrutorNome || template.instrutor || '',
+        instrutorCargo: template.instrutorCargo || '',
+        instrutorRegistro: template.instrutorRegistro || '',
+        codigoCatalogo: template.codigoCatalogo || template.code || '',
+        tipoCurso: 'turma',
+      };
+      const created = await addCourse(payload);
+      if (created) {
+        setQuickStatus({ type: 'success', text: 'Turma iniciada com sucesso. QR Code já disponível na lista abaixo.' });
+        setQuickForm(prev => ({
+          ...prev,
+          empresaContratante: '',
+          local: '',
+          data: '',
+        }));
+      }
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
+      <div className="card">
+        <h3 className="text-base font-bold text-gray-900 mb-2">Início Rápido de Turma (NR)</h3>
+        <p className="text-xs text-gray-500 mb-4">Selecione o curso NR, informe a empresa contratante e os dados da turma. O QR Code é gerado automaticamente.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Curso NR</label>
+            <select
+              value={quickForm.templateCode}
+              onChange={(event) => setQuickForm(prev => ({ ...prev, templateCode: event.target.value }))}
+              className="input-field"
+            >
+              {(templateCourses.length > 0
+                ? templateCourses.map(item => ({ code: item.codigoCatalogo || item.qrCode || item.id, nomeCurso: item.nomeCurso }))
+                : NR_CATALOG.map(item => ({ code: item.code, nomeCurso: item.nomeCurso }))
+              ).map(item => (
+                <option key={item.code} value={item.code}>{item.nomeCurso}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <input type="date" value={quickForm.data} onChange={(event) => setQuickForm(prev => ({ ...prev, data: event.target.value }))} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Horário</label>
+            <input type="time" value={quickForm.horarioInicio} onChange={(event) => setQuickForm(prev => ({ ...prev, horarioInicio: event.target.value }))} className="input-field" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">Empresa contratante</label>
+            <input type="text" value={quickForm.empresaContratante} onChange={(event) => setQuickForm(prev => ({ ...prev, empresaContratante: event.target.value }))} className="input-field" placeholder="Ex: Empresa XYZ Ltda" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Local</label>
+            <input type="text" value={quickForm.local} onChange={(event) => setQuickForm(prev => ({ ...prev, local: event.target.value }))} className="input-field" placeholder="Ex: Unidade da empresa" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Máx. alunos</label>
+            <input type="number" value={quickForm.maxAlunos} onChange={(event) => setQuickForm(prev => ({ ...prev, maxAlunos: event.target.value }))} className="input-field" />
+          </div>
+        </div>
+        <div className="flex justify-end mt-3">
+          <button onClick={handleQuickStart} disabled={quickSaving} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
+            <Plus className="w-4 h-4" />
+            {quickSaving ? 'Iniciando...' : 'Iniciar turma rapidamente'}
+          </button>
+        </div>
+        {quickStatus && (
+          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+            quickStatus.type === 'success' ? 'border-green-100 bg-green-50 text-green-700' : 'border-red-100 bg-red-50 text-red-700'
+          }`}>
+            {quickStatus.text}
+          </div>
+        )}
+      </div>
+
       {/* Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <BrandLogo className="w-24 h-12 rounded-xl border border-gray-100 shadow-sm" />
           <div>
-            <p className="text-gray-500 text-sm">{courses.length} curso(s) com QR Code</p>
+            <p className="text-gray-500 text-sm">{listedCourses.length} curso(s) com QR Code</p>
           </div>
         </div>
         <button onClick={openCreate} className="btn-primary">
@@ -357,7 +478,7 @@ export default function QRCodePage() {
       </div>
 
       {/* Search */}
-      {courses.length > 0 && (
+      {listedCourses.length > 0 && (
         <div className="relative">
           <input
             type="text"
@@ -370,7 +491,7 @@ export default function QRCodePage() {
       )}
 
       {/* Empty state */}
-      {courses.length === 0 ? (
+      {listedCourses.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-16 text-center">
           <BrandLogo className="w-36 h-20 rounded-2xl mb-4 border border-gray-100 shadow-sm" />
           <h3 className="text-lg font-semibold text-gray-700 mb-1">Nenhum curso criado</h3>
