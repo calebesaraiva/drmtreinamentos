@@ -2339,6 +2339,17 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/courses') {
+    if (isBusinessRole(req.auth || {})) {
+      const scopedClasses = businessScopedClasses(req.auth);
+      const scopedStudents = businessScopedStudents(req.auth);
+      const scopedCourseIds = new Set([
+        ...scopedClasses.map(item => String(item.cursoId || '')),
+        ...scopedStudents.map(item => String(item.cursoId || '')),
+      ]);
+      const scopedCourses = courses.filter(course => scopedCourseIds.has(String(course.id)));
+      sendJson(res, 200, scopedCourses.map(normalizeCourse));
+      return;
+    }
     sendJson(res, 200, courses.map(normalizeCourse));
     return;
   }

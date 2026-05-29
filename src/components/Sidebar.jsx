@@ -11,6 +11,7 @@ import BrandLogo from './BrandLogo';
 const navItems = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/pre-cadastro-empresarial', icon: Building2, label: 'Pré-cadastro empresarial', highlight: true, visibleRoles: ['empresario'] },
+  { to: '/empresario-historico', icon: BookOpenCheck, label: 'Meus cursos e histórico', visibleRoles: ['empresario'] },
   { to: '/qrcode', icon: QrCode, label: 'Cursos e QR Code', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
   { to: '/cronograma', icon: BookOpenCheck, label: 'Cronograma', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },
   { to: '/chamada', icon: ListChecks, label: 'Chamada', visibleRoles: ['admin', 'responsavel', 'instrutor', 'usuario'] },

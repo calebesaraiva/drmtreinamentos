@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   '/usuarios': 'Usuários',
   '/empresas-clientes': 'Empresas Clientes',
   '/pre-cadastro-empresarial': 'Pré-cadastro Empresarial',
+  '/empresario-historico': 'Cursos e Histórico',
   '/configuracoes': 'Configurações',
 };
 

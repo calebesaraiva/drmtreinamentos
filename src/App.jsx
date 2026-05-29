@@ -17,6 +17,7 @@ import ConfiguracoesPage from './pages/ConfiguracoesPage';
 import UsuariosPage from './pages/UsuariosPage';
 import EmpresasClientesPage from './pages/EmpresasClientesPage';
 import PreCadastroEmpresarialPage from './pages/PreCadastroEmpresarialPage';
+import EmpresarioHistoricoPage from './pages/EmpresarioHistoricoPage';
 import PublicCoursesPage from './pages/PublicCoursesPage';
 import ValidarCertificadoPage from './pages/ValidarCertificadoPage';
 
@@ -43,6 +44,7 @@ export default function App() {
             <Route path="usuarios" element={<UsuariosPage />} />
             <Route path="empresas-clientes" element={<EmpresasClientesPage />} />
             <Route path="pre-cadastro-empresarial" element={<PreCadastroEmpresarialPage />} />
+            <Route path="empresario-historico" element={<EmpresarioHistoricoPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
