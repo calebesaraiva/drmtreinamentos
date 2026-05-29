@@ -11,6 +11,10 @@ const initialForm = {
   telefone: '',
   empresa: '',
   cargo: '',
+  dataRealizacao: '',
+  horarioInicioReal: '',
+  localReal: '',
+  duracaoReal: '',
 };
 
 function triggerDownload(blob, filename = 'certificado.pdf') {
@@ -32,10 +36,15 @@ export default function CadastroManualPage() {
   const [actionLoading, setActionLoading] = useState('');
   const [status, setStatus] = useState(null);
   const [createdStudent, setCreatedStudent] = useState(null);
+  const [usarDadosCursoSelecionado, setUsarDadosCursoSelecionado] = useState(true);
 
   const activeCourses = useMemo(
     () => courses.filter(course => course.status !== 'inativo'),
     [courses],
+  );
+  const selectedCourse = useMemo(
+    () => courses.find(course => String(course.id) === String(form.cursoId)),
+    [courses, form.cursoId],
   );
 
   const updateField = (field, value) => {
@@ -45,6 +54,9 @@ export default function CadastroManualPage() {
 
   const validate = () => {
     const required = ['cursoId', 'nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+    if (!usarDadosCursoSelecionado) {
+      required.push('dataRealizacao', 'horarioInicioReal', 'localReal');
+    }
     const next = {};
     required.forEach((field) => {
       if (!String(form[field] || '').trim()) next[field] = 'Obrigatório';
@@ -63,6 +75,12 @@ export default function CadastroManualPage() {
         emitirCertificado: true,
         presenca: 100,
         notaProva: 10,
+        data: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
+        horarioInicio: usarDadosCursoSelecionado ? (selectedCourse?.horarioInicio || '') : form.horarioInicioReal,
+        local: usarDadosCursoSelecionado ? (selectedCourse?.local || '') : form.localReal,
+        duracao: usarDadosCursoSelecionado ? (selectedCourse?.duracao || '') : (form.duracaoReal || selectedCourse?.duracao || ''),
+        periodoInicio: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
+        periodoFim: usarDadosCursoSelecionado ? (selectedCourse?.data || '') : form.dataRealizacao,
       });
       if (!created) return;
       setCreatedStudent(created);
@@ -71,6 +89,10 @@ export default function CadastroManualPage() {
         cursoId: prev.cursoId,
         empresa: prev.empresa,
         cargo: prev.cargo,
+        dataRealizacao: prev.dataRealizacao,
+        horarioInicioReal: prev.horarioInicioReal,
+        localReal: prev.localReal,
+        duracaoReal: prev.duracaoReal,
       }));
       setStatus({ type: 'success', text: 'Aluno cadastrado e certificado autorizado.' });
       await refreshData();
@@ -176,6 +198,33 @@ export default function CadastroManualPage() {
           </select>
           {errors.cursoId && <p className="text-xs text-red-500 mt-1">{errors.cursoId}</p>}
         </div>
+
+        <label className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50 p-4 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={usarDadosCursoSelecionado}
+            onChange={event => setUsarDadosCursoSelecionado(event.target.checked)}
+            className="mt-1"
+          />
+          <span>
+            <span className="block text-sm font-bold text-blue-900">Usar data/local do curso selecionado</span>
+            <span className="block text-xs text-blue-700 mt-1">
+              Desmarque para informar a data real de um curso já realizado e emitir o certificado retroativo corretamente.
+            </span>
+          </span>
+        </label>
+
+        {!usarDadosCursoSelecionado && (
+          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+            <p className="text-xs font-semibold text-amber-900 mb-3">Dados reais da realização</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {input('dataRealizacao', 'Data real do curso *', 'date')}
+              {input('horarioInicioReal', 'Horário real de início *', 'time')}
+              {input('localReal', 'Local real do curso *', 'text', 'Ex: Unidade da empresa')}
+              {input('duracaoReal', 'Duração (opcional)', 'text', 'Ex: 8 horas')}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {input('nome', 'Nome completo *', 'text', 'Nome do aluno')}

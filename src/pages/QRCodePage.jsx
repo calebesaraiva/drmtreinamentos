@@ -172,6 +172,7 @@ export default function QRCodePage() {
     horarioInicio: '08:00',
     maxAlunos: '30',
   });
+  const [lastQuickCourse, setLastQuickCourse] = useState(null);
   const [layoutSaved, setLayoutSaved] = useState(false);
   const [certificateLayout, setCertificateLayout] = useState(() => getStoredCertificateLayout());
   const [certificateConfig, setCertificateConfig] = useState(() => {
@@ -202,6 +203,23 @@ export default function QRCodePage() {
     return () => {
       ignore = true;
     };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('drmQuickStartDefaults') || '{}');
+      if (saved && typeof saved === 'object') {
+        setQuickForm(prev => ({
+          ...prev,
+          empresaContratante: saved.empresaContratante || prev.empresaContratante,
+          local: saved.local || prev.local,
+          horarioInicio: saved.horarioInicio || prev.horarioInicio,
+          maxAlunos: saved.maxAlunos || prev.maxAlunos,
+        }));
+      }
+    } catch {
+      // noop
+    }
   }, []);
 
   const openCreate = () => {
@@ -393,13 +411,41 @@ export default function QRCodePage() {
       };
       const created = await addCourse(payload);
       if (created) {
+        localStorage.setItem('drmQuickStartDefaults', JSON.stringify({
+          empresaContratante: quickForm.empresaContratante.trim(),
+          local: quickForm.local.trim(),
+          horarioInicio: quickForm.horarioInicio,
+          maxAlunos: String(maxAlunos),
+        }));
+        setLastQuickCourse(created);
         setQuickStatus({ type: 'success', text: 'Turma iniciada com sucesso. QR Code já disponível na lista abaixo.' });
         setQuickForm(prev => ({
           ...prev,
-          empresaContratante: '',
-          local: '',
           data: '',
         }));
+      }
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const handleDuplicateLastQuickCourse = async () => {
+    if (!lastQuickCourse) return;
+    setQuickSaving(true);
+    setQuickStatus(null);
+    try {
+      const created = await addCourse({
+        ...lastQuickCourse,
+        id: undefined,
+        qrCode: undefined,
+        codigoVerificacao: '',
+        createdAt: undefined,
+        updatedAt: undefined,
+        tipoCurso: 'turma',
+      });
+      if (created) {
+        setLastQuickCourse(created);
+        setQuickStatus({ type: 'success', text: 'Última turma duplicada com sucesso.' });
       }
     } finally {
       setQuickSaving(false);
@@ -448,7 +494,11 @@ export default function QRCodePage() {
             <input type="number" value={quickForm.maxAlunos} onChange={(event) => setQuickForm(prev => ({ ...prev, maxAlunos: event.target.value }))} className="input-field" />
           </div>
         </div>
-        <div className="flex justify-end mt-3">
+        <div className="flex flex-col sm:flex-row justify-end gap-2 mt-3">
+          <button onClick={handleDuplicateLastQuickCourse} disabled={quickSaving || !lastQuickCourse} className="btn-secondary disabled:opacity-60 disabled:cursor-not-allowed">
+            <Copy className="w-4 h-4" />
+            Duplicar última turma
+          </button>
           <button onClick={handleQuickStart} disabled={quickSaving} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
             <Plus className="w-4 h-4" />
             {quickSaving ? 'Iniciando...' : 'Iniciar turma rapidamente'}

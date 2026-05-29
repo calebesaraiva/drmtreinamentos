@@ -1460,6 +1460,12 @@ async function createManualStudent(payload) {
   const actor = payload.actor || 'Responsável DRM';
   const emitirCertificado = payload.emitirCertificado !== false;
   const now = new Date().toISOString();
+  const studentDate = String(payload.data || course.data || '').trim();
+  const studentStartTime = String(payload.horarioInicio || course.horarioInicio || '').trim();
+  const studentLocation = String(payload.local || course.local || '').trim();
+  const studentDuration = String(payload.duracao || course.duracao || '').trim();
+  const studentPeriodoInicio = String(payload.periodoInicio || studentDate || '').trim();
+  const studentPeriodoFim = String(payload.periodoFim || studentDate || '').trim();
   const nextId = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
   let student = {
     id: nextId,
@@ -1471,10 +1477,12 @@ async function createManualStudent(payload) {
     cargo: String(payload.cargo).trim(),
     cursoId: course.id,
     nomeCurso: course.nomeCurso,
-    local: course.local,
-    data: course.data,
-    horarioInicio: course.horarioInicio,
-    duracao: course.duracao,
+    local: studentLocation,
+    data: studentDate,
+    horarioInicio: studentStartTime,
+    duracao: studentDuration,
+    periodoInicio: studentPeriodoInicio,
+    periodoFim: studentPeriodoFim,
     temInstrutor: course.temInstrutor,
     instrutor: course.instrutor,
     instrutorNome: course.instrutorNome,
