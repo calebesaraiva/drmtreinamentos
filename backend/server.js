@@ -125,6 +125,7 @@ function fallbackData() {
       classes: [],
       certificateSettings: {},
       companyChangeRequests: [],
+      auditLogs: [],
       users: defaultUsers,
     };
   }
@@ -136,6 +137,7 @@ function fallbackData() {
       classes: [],
       certificateSettings: {},
       companyChangeRequests: [],
+      auditLogs: [],
       users: defaultUsers,
     };
   }
@@ -148,6 +150,7 @@ function fallbackData() {
       classes: Array.isArray(parsed.classes) ? parsed.classes : [],
       certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
       companyChangeRequests: Array.isArray(parsed.companyChangeRequests) ? parsed.companyChangeRequests : [],
+      auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
       users: Array.isArray(parsed.users) ? parsed.users : defaultUsers,
     };
   } catch {
@@ -157,6 +160,7 @@ function fallbackData() {
       classes: [],
       certificateSettings: {},
       companyChangeRequests: [],
+      auditLogs: [],
       users: defaultUsers,
     };
   }
@@ -189,6 +193,7 @@ async function loadData() {
         ? existing.rows[0].data.certificateSettings
         : {},
       companyChangeRequests: Array.isArray(existing.rows[0].data.companyChangeRequests) ? existing.rows[0].data.companyChangeRequests : [],
+      auditLogs: Array.isArray(existing.rows[0].data.auditLogs) ? existing.rows[0].data.auditLogs : [],
       users: mergeEnvUsers(storedUsers),
     };
   }
@@ -231,6 +236,7 @@ let courses = initialData.courses;
 let classes = initialData.classes || [];
 let certificateSettings = normalizeCertificateSettings(initialData.certificateSettings || {});
 let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? initialData.companyChangeRequests : [];
+let auditLogs = Array.isArray(initialData.auditLogs) ? initialData.auditLogs : [];
 let users = mergeEnvUsers(initialData.users || []);
 
 function ensureCatalogCourses(existingCourses = []) {
@@ -296,7 +302,7 @@ const catalogSync = ensureCatalogCourses(courses);
 courses = catalogSync.courses;
 
 function persistData() {
-  const payload = { students, courses, classes, certificateSettings, companyChangeRequests, users };
+  const payload = { students, courses, classes, certificateSettings, companyChangeRequests, auditLogs, users };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -482,13 +488,96 @@ function badRequest(res, message) {
   sendJson(res, 400, { error: message });
 }
 
+const AUDIT_MAX_ITEMS = Number(process.env.AUDIT_MAX_ITEMS || 20000);
+const auditSensitiveKeys = new Set([
+  'password', 'senha', 'token', 'authorization',
+  'cpf', 'cnpj', 'email', 'telefone', 'phone',
+  'smtp_pass', 'smtp_user', 'smtp_from',
+]);
+
+function maskValue(value, key = '') {
+  const v = String(value ?? '');
+  const lowerKey = String(key || '').toLowerCase();
+  if (lowerKey.includes('password') || lowerKey.includes('senha')) return '[REDACTED]';
+  if (lowerKey.includes('token') || lowerKey.includes('authorization')) return '[REDACTED]';
+  if (lowerKey.includes('cpf') || lowerKey.includes('cnpj')) {
+    const digits = v.replace(/\D/g, '');
+    if (digits.length <= 4) return '***';
+    return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+  }
+  if (lowerKey.includes('email')) {
+    const [userPart, domainPart] = v.split('@');
+    if (!domainPart) return '***';
+    return `${(userPart || '').slice(0, 2)}***@${domainPart}`;
+  }
+  if (lowerKey.includes('telefone') || lowerKey.includes('phone')) {
+    const digits = v.replace(/\D/g, '');
+    if (digits.length <= 4) return '***';
+    return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+  }
+  if (v.length > 400) return `${v.slice(0, 400)}...[truncated]`;
+  return v;
+}
+
+function sanitizeAuditPayload(value, parentKey = '') {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.slice(0, 50).map(item => sanitizeAuditPayload(item, parentKey));
+  if (typeof value === 'object') {
+    const out = {};
+    Object.entries(value).forEach(([k, v]) => {
+      const lk = String(k || '').toLowerCase();
+      if (auditSensitiveKeys.has(lk) || lk.includes('password') || lk.includes('senha') || lk.includes('token') || lk.includes('authorization')) {
+        out[k] = '[REDACTED]';
+      } else if (lk.includes('cpf') || lk.includes('cnpj') || lk.includes('email') || lk.includes('telefone') || lk.includes('phone')) {
+        out[k] = maskValue(v, lk);
+      } else {
+        out[k] = sanitizeAuditPayload(v, lk);
+      }
+    });
+    return out;
+  }
+  if (typeof value === 'string') return maskValue(value, parentKey);
+  return value;
+}
+
+function resolveActor(req = {}) {
+  if (req.auth?.sub) {
+    return {
+      userId: String(req.auth.sub),
+      username: req.auth.username || '',
+      role: req.auth.role || '',
+      name: req.auth.name || '',
+    };
+  }
+  if (req.auditLoginUser) {
+    return {
+      userId: String(req.auditLoginUser.id || ''),
+      username: req.auditLoginUser.username || '',
+      role: req.auditLoginUser.role || '',
+      name: req.auditLoginUser.name || '',
+    };
+  }
+  return { userId: '', username: '', role: '', name: '' };
+}
+
+function appendAuditLog(entry) {
+  auditLogs = [entry, ...auditLogs].slice(0, AUDIT_MAX_ITEMS);
+  persistData();
+}
+
+function shouldAuditRequest(pathname = '') {
+  return String(pathname || '').startsWith('/api/') && pathname !== '/api/health';
+}
+
 async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   if (chunks.length === 0) return {};
 
   try {
-    return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    req.auditBody = sanitizeAuditPayload(parsed);
+    return parsed;
   } catch {
     return null;
   }
@@ -2582,6 +2671,33 @@ async function markAllCertificatesSent() {
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const parts = url.pathname.split('/').filter(Boolean);
+  const startedAt = Date.now();
+  const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+  const userAgent = String(req.headers['user-agent'] || '');
+
+  res.on('finish', () => {
+    try {
+      if (!shouldAuditRequest(url.pathname)) return;
+      const actor = resolveActor(req);
+      const query = {};
+      for (const [k, v] of url.searchParams.entries()) query[k] = v;
+      appendAuditLog({
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        at: new Date().toISOString(),
+        method: req.method,
+        path: url.pathname,
+        status: res.statusCode,
+        durationMs: Date.now() - startedAt,
+        ip,
+        userAgent,
+        actor,
+        query: sanitizeAuditPayload(query),
+        body: req.auditBody || {},
+      });
+    } catch (error) {
+      console.error('Falha ao gravar auditoria:', error);
+    }
+  });
 
   if (req.method === 'OPTIONS') {
     sendNoContent(res);
@@ -2625,6 +2741,7 @@ const server = createServer(async (req, res) => {
       return;
     }
     const auth = issueAuthToken(byCredentials);
+    req.auditLoginUser = byCredentials;
     sendJson(res, 200, { user: sanitizeManagedUser(byCredentials), ...auth });
     return;
   }
@@ -2669,6 +2786,32 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, listUsers());
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/audit-logs') {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para visualizar auditoria.' });
+      return;
+    }
+    const limit = Math.max(1, Math.min(2000, Number(url.searchParams.get('limit') || 200)));
+    const pathFilter = String(url.searchParams.get('path') || '').trim().toLowerCase();
+    const methodFilter = String(url.searchParams.get('method') || '').trim().toUpperCase();
+    const actorFilter = String(url.searchParams.get('actor') || '').trim().toLowerCase();
+    const statusFilter = String(url.searchParams.get('status') || '').trim();
+
+    const filtered = auditLogs.filter((item) => {
+      if (pathFilter && !String(item.path || '').toLowerCase().includes(pathFilter)) return false;
+      if (methodFilter && String(item.method || '').toUpperCase() !== methodFilter) return false;
+      if (actorFilter) {
+        const actorText = `${item.actor?.name || ''} ${item.actor?.username || ''}`.toLowerCase();
+        if (!actorText.includes(actorFilter)) return false;
+      }
+      if (statusFilter && String(item.status || '') !== statusFilter) return false;
+      return true;
+    }).slice(0, limit);
+
+    sendJson(res, 200, { total: filtered.length, items: filtered });
     return;
   }
 
