@@ -124,6 +124,7 @@ function fallbackData() {
       courses: [],
       classes: [],
       certificateSettings: {},
+      companyChangeRequests: [],
       users: defaultUsers,
     };
   }
@@ -134,6 +135,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      companyChangeRequests: [],
       users: defaultUsers,
     };
   }
@@ -145,6 +147,7 @@ function fallbackData() {
       courses: Array.isArray(parsed.courses) ? parsed.courses : structuredClone(MOCK_COURSES),
       classes: Array.isArray(parsed.classes) ? parsed.classes : [],
       certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
+      companyChangeRequests: Array.isArray(parsed.companyChangeRequests) ? parsed.companyChangeRequests : [],
       users: Array.isArray(parsed.users) ? parsed.users : defaultUsers,
     };
   } catch {
@@ -153,6 +156,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      companyChangeRequests: [],
       users: defaultUsers,
     };
   }
@@ -184,6 +188,7 @@ async function loadData() {
       certificateSettings: existing.rows[0].data.certificateSettings && typeof existing.rows[0].data.certificateSettings === 'object'
         ? existing.rows[0].data.certificateSettings
         : {},
+      companyChangeRequests: Array.isArray(existing.rows[0].data.companyChangeRequests) ? existing.rows[0].data.companyChangeRequests : [],
       users: mergeEnvUsers(storedUsers),
     };
   }
@@ -225,10 +230,11 @@ let students = initialData.students;
 let courses = initialData.courses;
 let classes = initialData.classes || [];
 let certificateSettings = normalizeCertificateSettings(initialData.certificateSettings || {});
+let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? initialData.companyChangeRequests : [];
 let users = mergeEnvUsers(initialData.users || []);
 
 function persistData() {
-  const payload = { students, courses, classes, certificateSettings, users };
+  const payload = { students, courses, classes, certificateSettings, companyChangeRequests, users };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -469,6 +475,75 @@ function businessScopedStudents(auth = {}) {
     if (company) return String(student.empresa || '').trim().toLowerCase() === company;
     return false;
   });
+}
+
+function listCompanyChangeRequests(auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  const current = currentUserFromAuth(auth);
+  const company = String(current?.empresa || '').trim().toLowerCase();
+  if (privilegedRoles.has(role)) return companyChangeRequests;
+  if (role === 'empresario') {
+    return companyChangeRequests.filter(item => String(item.empresa || '').trim().toLowerCase() === company);
+  }
+  return [];
+}
+
+function createCompanyChangeRequest(payload = {}, auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  if (!['admin', 'responsavel', 'empresario'].includes(role)) {
+    return { status: 403, error: 'Você não tem permissão para solicitar alteração cadastral.' };
+  }
+  const current = currentUserFromAuth(auth);
+  const empresa = String(payload.empresa || current?.empresa || '').trim();
+  const tipo = String(payload.tipo || '').trim().toLowerCase();
+  const detalhes = payload.detalhes && typeof payload.detalhes === 'object' ? payload.detalhes : {};
+  const motivo = String(payload.motivo || '').trim();
+  if (!empresa) return { status: 400, error: 'Empresa é obrigatória.' };
+  if (!['senha', 'dados'].includes(tipo)) return { status: 400, error: 'Tipo de solicitação inválido.' };
+  if (!motivo) return { status: 400, error: 'Motivo da solicitação é obrigatório.' };
+
+  const nextId = companyChangeRequests.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+  const request = {
+    id: nextId,
+    empresa,
+    tipo,
+    motivo,
+    detalhes,
+    status: 'pendente',
+    criadoEm: new Date().toISOString(),
+    criadoPor: auth.name || payload.actor || 'Solicitante',
+    criadoPorRole: role || 'empresario',
+    analisadoEm: null,
+    analisadoPor: null,
+    motivoRecusa: null,
+  };
+  companyChangeRequests = [request, ...companyChangeRequests];
+  persistData();
+  return { request };
+}
+
+function updateCompanyChangeRequestStatus(id, payload = {}, auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  if (!privilegedRoles.has(role)) {
+    return { status: 403, error: 'Você não tem permissão para aprovar/recusar solicitações.' };
+  }
+  const value = String(payload.status || '').trim().toLowerCase();
+  const motivoRecusa = String(payload.motivoRecusa || '').trim();
+  if (!['aprovado', 'recusado'].includes(value)) return { status: 400, error: 'Status inválido.' };
+  if (value === 'recusado' && !motivoRecusa) return { status: 400, error: 'Motivo da recusa é obrigatório.' };
+
+  const index = companyChangeRequests.findIndex(item => String(item.id) === String(id));
+  if (index === -1) return { status: 404, error: 'Solicitação não encontrada.' };
+
+  companyChangeRequests[index] = {
+    ...companyChangeRequests[index],
+    status: value,
+    analisadoEm: new Date().toISOString(),
+    analisadoPor: auth.name || 'Responsável DRM',
+    motivoRecusa: value === 'recusado' ? motivoRecusa : null,
+  };
+  persistData();
+  return { request: companyChangeRequests[index] };
 }
 
 function dashboardFromData(studentsData = [], classesData = [], coursesData = []) {
@@ -2766,6 +2841,41 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 201, result);
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/company-change-requests') {
+    sendJson(res, 200, listCompanyChangeRequests(req.auth || {}));
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/company-change-requests') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = createCompanyChangeRequest(body, req.auth || {});
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 201, result.request);
+    return;
+  }
+
+  if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'company-change-requests' && parts[2]) {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateCompanyChangeRequestStatus(parts[2], body, req.auth || {});
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result.request);
     return;
   }
 

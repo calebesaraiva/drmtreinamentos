@@ -137,6 +137,15 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
+  getCompanyChangeRequests: () => request('/api/company-change-requests'),
+  createCompanyChangeRequest: (payload) => request('/api/company-change-requests', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  updateCompanyChangeRequestStatus: (requestId, payload) => request(`/api/company-change-requests/${requestId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
   updateClassStudentsStatus: (classId, payload) => request(`/api/classes/${classId}/students-status`, {
     method: 'PATCH',
     body: JSON.stringify(payload),

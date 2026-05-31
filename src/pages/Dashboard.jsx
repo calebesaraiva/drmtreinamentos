@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, Award, ClipboardCheck, QrCode,
   AlertTriangle, CheckCircle, Clock,
-  ArrowRight, BookOpen, UserPlus, Building2, Send, PlayCircle, Mail
+  ArrowRight, BookOpen, UserPlus, Building2, Send, PlayCircle, Mail, Shield, FileText
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -96,8 +96,15 @@ function GoalCard({ icon: Icon, title, description, onClick, color }) {
   );
 }
 
+function StatusPill({ value }) {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized === 'aprovado') return <span className="badge-green">Aprovado</span>;
+  if (normalized === 'recusado') return <span className="badge-red">Recusado</span>;
+  return <span className="badge-yellow">Em análise</span>;
+}
+
 export default function Dashboard() {
-  const { students, courses, classes, user, apiError, addCourse, addManualStudent, markAllCertificadosSent, refreshData, loadingData, addSystemUser } = useApp();
+  const { students, courses, classes, user, apiError, addCourse, addManualStudent, refreshData, loadingData, addSystemUser } = useApp();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
@@ -122,6 +129,16 @@ export default function Dashboard() {
     email: '',
     telefone: '',
   });
+  const [quickSelectedIds, setQuickSelectedIds] = useState([]);
+  const [quickSelectedCompany, setQuickSelectedCompany] = useState(null);
+  const [quickCompanyStudentSearch, setQuickCompanyStudentSearch] = useState('');
+  const [quickClientsSearch, setQuickClientsSearch] = useState('');
+  const [quickClientDetail, setQuickClientDetail] = useState(null);
+  const [quickClientAction, setQuickClientAction] = useState('');
+  const [quickClientReason, setQuickClientReason] = useState('');
+  const [quickClientDataForm, setQuickClientDataForm] = useState({ contato: '', email: '', telefone: '' });
+  const [quickClientRequests, setQuickClientRequests] = useState([]);
+  const [quickClientSubmitting, setQuickClientSubmitting] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -174,6 +191,71 @@ export default function Dashboard() {
     () => students.filter(item => item.statusCertificado === 'aprovado' && !item.certificadoEnviado).length,
     [students],
   );
+  const aprovadosJaEnviados = useMemo(
+    () => students.filter(item => item.statusCertificado === 'aprovado' && item.certificadoEnviado).length,
+    [students],
+  );
+  const hasSecondCopyFlow = aprovadosNaoEnviados === 0 && aprovadosJaEnviados > 0;
+  const approvedStudents = useMemo(
+    () => students.filter(item => item.statusCertificado === 'aprovado'),
+    [students],
+  );
+  const quickCompanies = useMemo(() => {
+    const map = new Map();
+    approvedStudents.forEach((item) => {
+      const companyName = String(item.empresa || 'Empresa não informada').trim() || 'Empresa não informada';
+      if (!map.has(companyName)) map.set(companyName, []);
+      map.get(companyName).push(item);
+    });
+    return [...map.entries()]
+      .map(([empresa, rows]) => ({
+        empresa,
+        rows: [...rows].sort((a, b) => String(a.nome || '').localeCompare(String(b.nome || ''), 'pt-BR')),
+      }))
+      .sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR'));
+  }, [approvedStudents]);
+  const clientsOverview = useMemo(() => {
+    const map = new Map();
+    const add = (companyName, data = {}) => {
+      const name = String(companyName || '').trim() || 'A definir';
+      if (!map.has(name)) {
+        map.set(name, {
+          empresa: name,
+          alunos: 0,
+          certificadosAprovados: 0,
+          cursos: new Set(),
+          contato: '',
+          email: '',
+          telefone: '',
+        });
+      }
+      const item = map.get(name);
+      item.alunos += data.aluno ? 1 : 0;
+      item.certificadosAprovados += data.certificadoAprovado ? 1 : 0;
+      if (data.curso) item.cursos.add(data.curso);
+      if (!item.email && data.email) item.email = data.email;
+      if (!item.telefone && data.telefone) item.telefone = data.telefone;
+    };
+
+    students.forEach((s) => add(s.empresa, {
+      aluno: true,
+      certificadoAprovado: s.statusCertificado === 'aprovado',
+      curso: s.nomeCurso,
+      email: s.email,
+      telefone: s.telefone,
+    }));
+    courses.forEach((c) => add(c.empresaContratante, { curso: c.nomeCurso }));
+    classes.forEach((t) => add(t.empresa?.nome, { curso: t.nomeCurso }));
+
+    return [...map.values()]
+      .map((item) => ({ ...item, totalCursos: item.cursos.size }))
+      .sort((a, b) => b.alunos - a.alunos || a.empresa.localeCompare(b.empresa, 'pt-BR'));
+  }, [students, courses, classes]);
+  const filteredClientsOverview = useMemo(() => {
+    const q = quickClientsSearch.trim().toLowerCase();
+    if (!q) return clientsOverview;
+    return clientsOverview.filter((item) => item.empresa.toLowerCase().includes(q));
+  }, [clientsOverview, quickClientsSearch]);
   const companyOptions = useMemo(() => {
     const map = new Map();
     const add = (name) => {
@@ -195,6 +277,74 @@ export default function Dashboard() {
   const openQuickModal = (type) => {
     setQuickStatus(null);
     setQuickModal(type);
+    if (type === 'certificados') {
+      const defaults = students
+        .filter(item => item.statusCertificado === 'aprovado' && !item.certificadoEnviado)
+        .map(item => String(item.id));
+      setQuickSelectedIds(defaults);
+    }
+    if (type === 'clientes') {
+      setQuickClientsSearch('');
+      setQuickClientDetail(null);
+      setQuickClientAction('');
+      setQuickClientReason('');
+      setQuickClientDataForm({ contato: '', email: '', telefone: '' });
+      api.getCompanyChangeRequests().then(setQuickClientRequests).catch(() => setQuickClientRequests([]));
+    }
+  };
+
+  const openClientDetail = (item) => {
+    setQuickClientDetail(item);
+    setQuickClientAction('');
+    setQuickClientReason('');
+    setQuickClientDataForm({
+      contato: item?.contato || '',
+      email: item?.email || '',
+      telefone: item?.telefone || '',
+    });
+  };
+
+  const submitClientChangeRequest = async () => {
+    if (!quickClientDetail) return;
+    if (!quickClientAction) {
+      setQuickStatus({ type: 'error', text: 'Selecione uma ação: trocar senha ou alterar dados.' });
+      return;
+    }
+    if (!quickClientReason.trim()) {
+      setQuickStatus({ type: 'error', text: 'Informe o motivo da solicitação para validação.' });
+      return;
+    }
+    setQuickClientSubmitting(true);
+    setQuickStatus(null);
+    try {
+      const payload = quickClientAction === 'senha'
+        ? {
+            empresa: quickClientDetail.empresa,
+            tipo: 'senha',
+            motivo: quickClientReason.trim(),
+            detalhes: { acao: 'troca_senha_perfil_empresa' },
+          }
+        : {
+            empresa: quickClientDetail.empresa,
+            tipo: 'dados',
+            motivo: quickClientReason.trim(),
+            detalhes: {
+              contato: quickClientDataForm.contato,
+              email: quickClientDataForm.email,
+              telefone: quickClientDataForm.telefone,
+            },
+          };
+      await api.createCompanyChangeRequest(payload);
+      const requests = await api.getCompanyChangeRequests();
+      setQuickClientRequests(requests);
+      setQuickStatus({ type: 'success', text: 'Solicitação enviada para validação/aprovação. As alterações só valem após aprovação.' });
+      setQuickClientAction('');
+      setQuickClientReason('');
+    } catch (error) {
+      setQuickStatus({ type: 'error', text: error?.message || 'Não foi possível enviar a solicitação.' });
+    } finally {
+      setQuickClientSubmitting(false);
+    }
   };
 
   const handleCreateQuickCourse = async () => {
@@ -271,12 +421,51 @@ export default function Dashboard() {
     }
   };
 
-  const handleSendAllApproved = async () => {
-    setQuickStatus(null);
-    const result = await markAllCertificadosSent();
-    if (result) {
-      setQuickStatus({ type: 'success', text: 'Envio em lote concluído. Verifique os alertas de falha de SMTP, se houver.' });
+  const toggleQuickStudent = (id) => {
+    const key = String(id);
+    setQuickSelectedIds(prev => (
+      prev.includes(key) ? prev.filter(item => item !== key) : [...prev, key]
+    ));
+  };
+
+  const toggleQuickCompany = (rows) => {
+    const ids = rows.map(item => String(item.id));
+    const allSelected = ids.length > 0 && ids.every(id => quickSelectedIds.includes(id));
+    setQuickSelectedIds(prev => (
+      allSelected
+        ? prev.filter(id => !ids.includes(id))
+        : [...new Set([...prev, ...ids])]
+    ));
+  };
+
+  const toggleQuickAll = () => {
+    const allIds = approvedStudents.map(item => String(item.id));
+    const allSelected = allIds.length > 0 && allIds.every(id => quickSelectedIds.includes(id));
+    setQuickSelectedIds(allSelected ? [] : allIds);
+  };
+
+  const openQuickCompanyStudents = (group) => {
+    setQuickSelectedCompany(group);
+    setQuickCompanyStudentSearch('');
+  };
+
+  const handleSendSelectedQuick = async () => {
+    if (quickSelectedIds.length === 0) {
+      setQuickStatus({ type: 'error', text: 'Selecione pelo menos um aluno para enviar.' });
+      return;
+    }
+    try {
+      setQuickStatus(null);
+      await api.exportCertificates({
+        studentIds: quickSelectedIds,
+        action: 'email',
+        actor: user?.name || 'Responsável DRM',
+        actorRole: user?.role || 'responsavel',
+      });
+      setQuickStatus({ type: 'success', text: 'Envio processado para os alunos selecionados.' });
       await refreshData();
+    } catch (error) {
+      setQuickStatus({ type: 'error', text: error?.message || 'Falha ao enviar e-mails selecionados.' });
     }
   };
 
@@ -422,7 +611,7 @@ export default function Dashboard() {
         <GoalCard icon={QrCode} title="Iniciar turma" description="Curso + empresa + data em segundos" onClick={() => openQuickModal('turma')} color="bg-blue-50 border-blue-100 text-blue-900" />
         <GoalCard icon={UserPlus} title="Aluno retroativo" description="Cadastro e certificado rápido" onClick={() => openQuickModal('aluno')} color="bg-green-50 border-green-100 text-green-900" />
         <GoalCard icon={Send} title="Emitir certificados" description="Baixar PDF/ZIP ou enviar e-mail" onClick={() => openQuickModal('certificados')} color="bg-amber-50 border-amber-100 text-amber-900" />
-        <GoalCard icon={Building2} title="Ver clientes" description="Empresas, funcionários e certificados" onClick={() => navigate('/empresas-clientes')} color="bg-slate-50 border-slate-200 text-slate-900" />
+        <GoalCard icon={Building2} title="Ver clientes" description="Empresas, funcionários e certificados" onClick={() => openQuickModal('clientes')} color="bg-slate-50 border-slate-200 text-slate-900" />
       </div>
 
       {/* Stats */}
@@ -709,11 +898,204 @@ export default function Dashboard() {
         onSubmit={addManualStudent}
         loading={loadingData}
       />
-
-      <Modal isOpen={quickModal === 'certificados'} onClose={() => setQuickModal('')} title="Emitir certificados (rápido)" size="md">
+      <Modal isOpen={quickModal === 'clientes'} onClose={() => setQuickModal('')} title="Ver clientes (rápido)" size="lg">
         <div className="space-y-4">
-          <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
-            <p className="text-sm text-amber-900"><strong>{aprovadosNaoEnviados}</strong> certificado(s) aprovado(s) aguardando envio.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <p className="text-xs text-gray-500 uppercase">Empresas</p>
+              <p className="text-xl font-bold text-gray-800">{clientsOverview.length}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <p className="text-xs text-gray-500 uppercase">Funcionários</p>
+              <p className="text-xl font-bold text-gray-800">{students.length}</p>
+            </div>
+            <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+              <p className="text-xs text-gray-500 uppercase">Certificados aprovados</p>
+              <p className="text-xl font-bold text-gray-800">{students.filter(s => s.statusCertificado === 'aprovado').length}</p>
+            </div>
+          </div>
+
+          {!quickClientDetail ? (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Buscar empresa</label>
+                <input
+                  value={quickClientsSearch}
+                  onChange={(event) => setQuickClientsSearch(event.target.value)}
+                  className="input-field"
+                  placeholder="Digite o nome da empresa..."
+                />
+              </div>
+
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                {filteredClientsOverview.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-gray-500">Nenhuma empresa encontrada.</p>
+                ) : (
+                  <div className="max-h-80 overflow-auto">
+                    {filteredClientsOverview.map((item) => (
+                      <button
+                        key={`client-quick-${item.empresa}`}
+                        type="button"
+                        onClick={() => openClientDetail(item)}
+                        className="w-full text-left px-3 py-3 border-b border-gray-50 hover:bg-gray-50"
+                      >
+                        <p className="text-sm font-semibold text-gray-800">{item.empresa}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {item.alunos} funcionário(s) · {item.certificadosAprovados} certificado(s) aprovado(s) · {item.totalCursos} curso(s)
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-bold text-gray-900">{quickClientDetail.empresa}</p>
+                  <p className="text-xs text-gray-500">Dados da empresa cliente e ações rápidas</p>
+                </div>
+                <button type="button" onClick={() => setQuickClientDetail(null)} className="btn-secondary text-xs">Voltar para empresas</button>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[11px] uppercase text-gray-500">Funcionários</p>
+                  <p className="text-lg font-bold text-gray-800">{quickClientDetail.alunos}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[11px] uppercase text-gray-500">Certificados aprovados</p>
+                  <p className="text-lg font-bold text-gray-800">{quickClientDetail.certificadosAprovados}</p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 p-3">
+                  <p className="text-[11px] uppercase text-gray-500">Cursos vinculados</p>
+                  <p className="text-lg font-bold text-gray-800">{quickClientDetail.totalCursos}</p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs text-blue-800">
+                <div className="flex items-center gap-2 mb-1"><Shield className="w-4 h-4" />Alterações com validação DRM</div>
+                Qualquer alteração solicitada aqui fica <strong>pendente</strong> e só passa a valer após aprovação do responsável/admin.
+              </div>
+
+              <div className="rounded-xl border border-gray-100 p-3 space-y-3">
+                <p className="text-sm font-semibold text-gray-800">Ações rápidas</p>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => setQuickClientAction('senha')} className={`btn-secondary text-xs ${quickClientAction === 'senha' ? 'ring-2 ring-blue-100' : ''}`}>
+                    <Shield className="w-3.5 h-3.5" />Solicitar troca de senha do perfil empresa
+                  </button>
+                  <button type="button" onClick={() => setQuickClientAction('dados')} className={`btn-secondary text-xs ${quickClientAction === 'dados' ? 'ring-2 ring-blue-100' : ''}`}>
+                    <FileText className="w-3.5 h-3.5" />Solicitar alteração de dados
+                  </button>
+                </div>
+
+                {quickClientAction === 'dados' && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <input className="input-field" placeholder="Contato" value={quickClientDataForm.contato} onChange={(e) => setQuickClientDataForm(prev => ({ ...prev, contato: e.target.value }))} />
+                    <input className="input-field" placeholder="E-mail" value={quickClientDataForm.email} onChange={(e) => setQuickClientDataForm(prev => ({ ...prev, email: e.target.value }))} />
+                    <input className="input-field" placeholder="Telefone" value={quickClientDataForm.telefone} onChange={(e) => setQuickClientDataForm(prev => ({ ...prev, telefone: e.target.value }))} />
+                  </div>
+                )}
+                <textarea
+                  className="input-field min-h-20"
+                  placeholder="Motivo da solicitação (obrigatório)"
+                  value={quickClientReason}
+                  onChange={(e) => setQuickClientReason(e.target.value)}
+                />
+                <div className="flex justify-end">
+                  <button type="button" onClick={submitClientChangeRequest} disabled={quickClientSubmitting} className="btn-primary text-sm disabled:opacity-60">
+                    {quickClientSubmitting ? 'Enviando...' : 'Enviar para validação/aprovação'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                  <p className="text-sm font-semibold text-gray-800">Solicitações da empresa</p>
+                </div>
+                <div className="max-h-44 overflow-auto">
+                  {quickClientRequests.filter(item => item.empresa === quickClientDetail.empresa).length === 0 ? (
+                    <p className="px-3 py-3 text-sm text-gray-500">Sem solicitações registradas.</p>
+                  ) : quickClientRequests
+                    .filter(item => item.empresa === quickClientDetail.empresa)
+                    .slice(0, 10)
+                    .map(item => (
+                      <div key={`req-${item.id}`} className="px-3 py-2 border-b border-gray-50">
+                        <p className="text-xs font-semibold text-gray-800">{item.tipo === 'senha' ? 'Troca de senha' : 'Alteração de dados'}</p>
+                        <p className="text-xs text-gray-500">{item.motivo}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Status: {item.status}</p>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setQuickModal('')} className="btn-secondary text-sm">Fechar</button>
+            <button type="button" onClick={() => navigate('/empresas-clientes')} className="btn-primary text-sm">
+              Abrir tela completa
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={quickModal === 'certificados'} onClose={() => setQuickModal('')} title="Emitir certificados (rápido)" size="lg">
+        <div className="space-y-4">
+          <div className={`rounded-xl border p-3 ${
+            hasSecondCopyFlow
+              ? 'bg-blue-50 border-blue-100'
+              : 'bg-amber-50 border-amber-100'
+          }`}>
+            <p className={`text-sm ${hasSecondCopyFlow ? 'text-blue-900' : 'text-amber-900'}`}>
+              {hasSecondCopyFlow ? (
+                <>
+                  <strong>{aprovadosJaEnviados}</strong> certificado(s) já enviados. Você pode reenviar <strong>2ª via</strong> ao cliente.
+                </>
+              ) : (
+                <>
+                  <strong>{aprovadosNaoEnviados}</strong> certificado(s) aprovado(s) aguardando envio.
+                </>
+              )}
+            </p>
+          </div>
+          <div className="rounded-xl border border-gray-100 overflow-hidden">
+            <div className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-gray-800">Empresas (clique para selecionar alunos)</p>
+              <button type="button" onClick={toggleQuickAll} className="text-xs text-blue-700 hover:underline">
+                {approvedStudents.length > 0 && approvedStudents.every(item => quickSelectedIds.includes(String(item.id))) ? 'Limpar seleção' : 'Selecionar todos'}
+              </button>
+            </div>
+            {quickCompanies.length === 0 ? (
+              <p className="px-3 py-4 text-sm text-gray-500">Nenhum certificado aprovado encontrado.</p>
+            ) : (
+              <div className="max-h-80 overflow-auto p-2 space-y-2">
+                {quickCompanies.map((group) => {
+                  const groupIds = group.rows.map(item => String(item.id));
+                  const selectedCount = groupIds.filter(id => quickSelectedIds.includes(id)).length;
+                  return (
+                    <button
+                      key={`grp-${group.empresa}`}
+                      type="button"
+                      onClick={() => openQuickCompanyStudents(group)}
+                      className="w-full text-left rounded-lg border border-gray-100 bg-white px-3 py-3 hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate">{group.empresa}</p>
+                          <p className="text-xs text-gray-500">{group.rows.length} aluno(s) · {selectedCount} selecionado(s)</p>
+                        </div>
+                        <span className="text-xs text-blue-700 font-medium">Selecionar alunos</span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+            {quickSelectedIds.length} aluno(s) selecionado(s) para envio.
           </div>
           {quickStatus && (
             <div className={`rounded-xl border p-3 text-sm ${quickStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
@@ -722,8 +1104,103 @@ export default function Dashboard() {
           )}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-sm">Abrir tela completa</button>
-            <button type="button" onClick={handleSendAllApproved} disabled={aprovadosNaoEnviados === 0 || loadingData} className="btn-primary text-sm disabled:opacity-60">
-              Enviar todos por e-mail
+            <button
+              type="button"
+              onClick={hasSecondCopyFlow ? handleSendSelectedQuick : handleSendSelectedQuick}
+              disabled={loadingData || quickSelectedIds.length === 0}
+              className="btn-primary text-sm disabled:opacity-60"
+            >
+              {hasSecondCopyFlow ? 'Enviar 2ª via ao cliente' : `Enviar via e-mail (${quickSelectedIds.length})`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={!!quickSelectedCompany}
+        onClose={() => setQuickSelectedCompany(null)}
+        title={quickSelectedCompany ? `Selecionar alunos - ${quickSelectedCompany.empresa}` : 'Selecionar alunos'}
+        size="lg"
+      >
+        <div className="space-y-3">
+          {quickSelectedCompany && (
+            <>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">Buscar por nome ou CPF</label>
+                <input
+                  value={quickCompanyStudentSearch}
+                  onChange={(event) => setQuickCompanyStudentSearch(event.target.value)}
+                  className="input-field"
+                  placeholder="Digite o nome ou CPF do aluno..."
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-gray-600">
+                  {quickSelectedCompany.rows.filter((item) => {
+                    const q = quickCompanyStudentSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return String(item.nome || '').toLowerCase().includes(q) || String(item.cpf || '').includes(q);
+                  }).length} aluno(s) exibido(s)
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const filteredRows = quickSelectedCompany.rows.filter((item) => {
+                      const q = quickCompanyStudentSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return String(item.nome || '').toLowerCase().includes(q) || String(item.cpf || '').includes(q);
+                    });
+                    toggleQuickCompany(filteredRows);
+                  }}
+                  className="btn-secondary text-xs"
+                >
+                  {quickSelectedCompany.rows
+                    .filter((item) => {
+                      const q = quickCompanyStudentSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return String(item.nome || '').toLowerCase().includes(q) || String(item.cpf || '').includes(q);
+                    })
+                    .every(item => quickSelectedIds.includes(String(item.id)))
+                    ? 'Desmarcar todos da empresa'
+                    : 'Selecionar todos da empresa'}
+                </button>
+              </div>
+              <div className="max-h-80 overflow-auto rounded-xl border border-gray-100">
+                {quickSelectedCompany.rows
+                  .filter((item) => {
+                    const q = quickCompanyStudentSearch.trim().toLowerCase();
+                    if (!q) return true;
+                    return String(item.nome || '').toLowerCase().includes(q) || String(item.cpf || '').includes(q);
+                  })
+                  .map((item) => (
+                  <label key={`quick-student-modal-${item.id}`} className="px-3 py-2 flex items-center gap-3 border-b last:border-b-0 border-gray-50 hover:bg-gray-50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={quickSelectedIds.includes(String(item.id))}
+                      onChange={() => toggleQuickStudent(item.id)}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-800 truncate">{item.nome}</p>
+                      <p className="text-xs text-gray-500 truncate">{item.nomeCurso || '-'} · {item.cpf || 'CPF não informado'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusPill value={item.statusCadastro} />
+                      <StatusPill value={item.statusCertificado} />
+                    </div>
+                  </label>
+                ))}
+                {quickSelectedCompany.rows.filter((item) => {
+                  const q = quickCompanyStudentSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return String(item.nome || '').toLowerCase().includes(q) || String(item.cpf || '').includes(q);
+                }).length === 0 && (
+                  <p className="px-3 py-4 text-sm text-gray-500">Nenhum aluno encontrado para essa busca.</p>
+                )}
+              </div>
+            </>
+          )}
+          <div className="flex justify-end">
+            <button type="button" className="btn-primary text-sm" onClick={() => setQuickSelectedCompany(null)}>
+              Confirmar seleção
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   CheckCircle, XCircle, AlertCircle,
   ChevronDown, ChevronUp, Loader2, RefreshCcw
@@ -6,6 +6,7 @@ import {
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
 import { MOTIVOS_RECUSA } from '../data/mockData';
+import { api } from '../services/api';
 
 function StatusBadge({ status }) {
   if (status === 'aprovado') return <span className="badge-green">Aprovado</span>;
@@ -242,8 +243,26 @@ export default function AnalisePage() {
   const [recusaModal, setRecusaModal] = useState(null); // { aluno, tipo }
   const [processing, setProcessing] = useState(null);
   const [recusaLoading, setRecusaLoading] = useState(false);
+  const [companyRequests, setCompanyRequests] = useState([]);
+  const [companyRequestProcessing, setCompanyRequestProcessing] = useState('');
+  const [companyRequestRecusa, setCompanyRequestRecusa] = useState(null);
+  const [companyRequestMotivo, setCompanyRequestMotivo] = useState('');
   const safeStudents = Array.isArray(students) ? students : [];
   const safeClasses = Array.isArray(classes) ? classes : [];
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadCompanyRequests() {
+      try {
+        const list = await api.getCompanyChangeRequests();
+        if (!ignore) setCompanyRequests(Array.isArray(list) ? list : []);
+      } catch {
+        if (!ignore) setCompanyRequests([]);
+      }
+    }
+    loadCompanyRequests();
+    return () => { ignore = true; };
+  }, [loadingData]);
 
   const filtered = safeStudents.filter(s => {
     if (filter === 'todos') return true;
@@ -279,12 +298,42 @@ export default function AnalisePage() {
   };
 
   const pendentes = safeStudents.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length;
+  const pendingCompanyRequests = companyRequests.filter(item => String(item.status || '') === 'pendente');
   const turmaPendentes = safeClasses
     .map(turma => ({
       ...turma,
       students: safeStudents.filter(student => String(student.turmaId) === String(turma.id)),
     }))
     .filter((turma) => turma.students.length > 0 || String(turma.origem || '') === 'pre-cadastro-empresarial');
+
+  const handleCompanyRequestApprove = async (requestId) => {
+    setCompanyRequestProcessing(`approve:${requestId}`);
+    try {
+      await api.updateCompanyChangeRequestStatus(requestId, { status: 'aprovado' });
+      const list = await api.getCompanyChangeRequests();
+      setCompanyRequests(Array.isArray(list) ? list : []);
+    } finally {
+      setCompanyRequestProcessing('');
+    }
+  };
+
+  const handleCompanyRequestRecusa = async () => {
+    if (!companyRequestRecusa?.id) return;
+    if (!companyRequestMotivo.trim()) return;
+    setCompanyRequestProcessing(`reject:${companyRequestRecusa.id}`);
+    try {
+      await api.updateCompanyChangeRequestStatus(companyRequestRecusa.id, {
+        status: 'recusado',
+        motivoRecusa: companyRequestMotivo.trim(),
+      });
+      const list = await api.getCompanyChangeRequests();
+      setCompanyRequests(Array.isArray(list) ? list : []);
+      setCompanyRequestRecusa(null);
+      setCompanyRequestMotivo('');
+    } finally {
+      setCompanyRequestProcessing('');
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -320,6 +369,53 @@ export default function AnalisePage() {
           <p className="text-sm text-amber-800">
             <strong>{pendentes} item(s)</strong> aguardando análise. Revise e tome as ações necessárias.
           </p>
+        </div>
+      )}
+
+      {pendingCompanyRequests.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-bold text-gray-900">Solicitações de alteração de empresa</h3>
+            <span className="badge-yellow">{pendingCompanyRequests.length} pendente(s)</span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {pendingCompanyRequests.map((item) => (
+              <div key={`company-request-${item.id}`} className="card space-y-3">
+                <div>
+                  <p className="text-xs text-gray-500 uppercase">Empresa</p>
+                  <p className="font-bold text-gray-900">{safeText(item.empresa)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div><span className="text-gray-500">Tipo:</span> <strong>{item.tipo === 'senha' ? 'Troca de senha' : 'Alteração de dados'}</strong></div>
+                  <div><span className="text-gray-500">Solicitado por:</span> <strong>{safeText(item.criadoPor)}</strong></div>
+                </div>
+                <div className="rounded-lg bg-gray-50 border border-gray-100 p-2">
+                  <p className="text-xs text-gray-500">Motivo</p>
+                  <p className="text-sm text-gray-700">{safeText(item.motivo)}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleCompanyRequestApprove(item.id)}
+                    disabled={companyRequestProcessing !== ''}
+                    className="btn-success text-xs disabled:opacity-60"
+                  >
+                    {companyRequestProcessing === `approve:${item.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                    Aprovar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setCompanyRequestRecusa(item); setCompanyRequestMotivo(''); }}
+                    disabled={companyRequestProcessing !== ''}
+                    className="btn-danger text-xs disabled:opacity-60"
+                  >
+                    <XCircle className="w-3.5 h-3.5" />
+                    Recusar
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -479,6 +575,32 @@ export default function AnalisePage() {
         tipo={recusaModal?.tipo}
         loading={recusaLoading}
       />
+
+      <Modal isOpen={!!companyRequestRecusa} onClose={() => setCompanyRequestRecusa(null)} title="Recusar solicitação da empresa" size="sm">
+        <div className="space-y-3">
+          <p className="text-sm text-gray-600">
+            Informe o motivo da recusa para a empresa <strong>{companyRequestRecusa?.empresa || '-'}</strong>.
+          </p>
+          <textarea
+            value={companyRequestMotivo}
+            onChange={(event) => setCompanyRequestMotivo(event.target.value)}
+            className="input-field min-h-24"
+            placeholder="Ex: dados inconsistentes, envie documentação complementar."
+          />
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => setCompanyRequestRecusa(null)} className="btn-secondary text-sm">Cancelar</button>
+            <button
+              type="button"
+              onClick={handleCompanyRequestRecusa}
+              disabled={!companyRequestMotivo.trim() || companyRequestProcessing !== ''}
+              className="btn-danger text-sm disabled:opacity-60"
+            >
+              {companyRequestProcessing === `reject:${companyRequestRecusa?.id}` ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+              Confirmar recusa
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
