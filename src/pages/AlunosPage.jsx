@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Search, Filter, User, Building2, Phone, Mail,
   BookOpen, MapPin, Calendar, ChevronDown, ChevronUp, X,
@@ -1139,6 +1140,8 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
 
 export default function AlunosPage() {
   const { students, updateStudentStatus } = useApp();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('todos');
   const [filterCurso, setFilterCurso] = useState('todos');
@@ -1147,6 +1150,37 @@ export default function AlunosPage() {
   const [sortField, setSortField] = useState('nome');
   const [sortDir, setSortDir] = useState('asc');
   const [processing, setProcessing] = useState(null);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const monthQuery = String(searchParams.get('mes') || '').trim().toLowerCase();
+  const monthMap = {
+    jan: 1, janeiro: 1,
+    fev: 2, fevereiro: 2,
+    mar: 3, marco: 3, março: 3,
+    abr: 4, abril: 4,
+    mai: 5, maio: 5,
+    jun: 6, junho: 6,
+    jul: 7, julho: 7,
+    ago: 8, agosto: 8,
+    set: 9, setembro: 9,
+    out: 10, outubro: 10,
+    nov: 11, novembro: 11,
+    dez: 12, dezembro: 12,
+  };
+  const monthNumber = monthMap[monthQuery] || null;
+  const matchesMonth = (value) => {
+    if (!monthNumber) return true;
+    if (!value) return false;
+    const raw = String(value);
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) return date.getMonth() + 1 === monthNumber;
+    const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return Number(br[2]) === monthNumber;
+    return false;
+  };
+  useEffect(() => {
+    if (!monthNumber) return;
+    setQuickFilter('todos');
+  }, [monthNumber]);
 
   const cursos = [...new Set(students.map(s => s.nomeCurso))];
 
@@ -1169,7 +1203,8 @@ export default function AlunosPage() {
         (quickFilter === 'sem-email' && !String(s.email || '').trim()) ||
         (quickFilter === 'recusados' && (s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado'))
       );
-      return matchSearch && matchStatus && matchCurso && matchQuick;
+      const matchMonth = matchesMonth(s.data || s.periodoFim || s.periodoInicio || s.createdAt);
+      return matchSearch && matchStatus && matchCurso && matchQuick && matchMonth;
     })
     .sort((a, b) => {
       let va = a[sortField] ?? '';
@@ -1184,6 +1219,28 @@ export default function AlunosPage() {
   const toggleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
+  };
+  const toggleSelected = (studentId) => {
+    const id = String(studentId);
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
+  };
+  const approvedVisibleIds = filtered
+    .filter(item => item.statusCertificado === 'aprovado')
+    .map(item => String(item.id));
+  const toggleSelectApprovedVisible = () => {
+    const allSelected = approvedVisibleIds.length > 0 && approvedVisibleIds.every(id => selectedIds.includes(id));
+    setSelectedIds(prev => (
+      allSelected
+        ? prev.filter(id => !approvedVisibleIds.includes(id))
+        : [...new Set([...prev, ...approvedVisibleIds])]
+    ));
+  };
+  const goToCertificadosWithSelected = () => {
+    if (selectedIds.length === 0) return;
+    const params = new URLSearchParams();
+    params.set('ids', selectedIds.join(','));
+    if (monthQuery) params.set('mes', monthQuery);
+    navigate(`/certificados?${params.toString()}`);
   };
 
   const handleAutorizar = async (aluno, field) => {
@@ -1219,6 +1276,22 @@ export default function AlunosPage() {
     <div className="space-y-5">
       {/* Filters */}
       <div className="card">
+        {monthNumber && (
+          <div className="mb-3 flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+            <p className="text-xs text-blue-700">Filtro do dashboard ativo: mês <strong>{monthQuery}</strong></p>
+            <button
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('mes');
+                setSearchParams(next);
+              }}
+              className="text-xs text-blue-700 hover:underline"
+            >
+              Limpar filtro
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2 mb-3">
           {[
             { id: 'todos', label: 'Todos' },
@@ -1294,12 +1367,33 @@ export default function AlunosPage() {
       <div className="card p-0 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h3 className="font-bold text-gray-800">Lista de Alunos</h3>
-          <span className="text-sm text-gray-400">{filtered.length} resultado(s)</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleSelectApprovedVisible}
+              className="btn-secondary text-xs"
+            >
+              {approvedVisibleIds.length > 0 && approvedVisibleIds.every(id => selectedIds.includes(id))
+                ? 'Limpar aprovados'
+                : 'Selecionar aprovados'}
+            </button>
+            <button
+              type="button"
+              onClick={goToCertificadosWithSelected}
+              disabled={selectedIds.length === 0}
+              className="btn-primary text-xs disabled:opacity-60"
+            >
+              <Mail className="w-3 h-3" />
+              Enviar selecionados ({selectedIds.length})
+            </button>
+            <span className="text-sm text-gray-400">{filtered.length} resultado(s)</span>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
+                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3">Sel.</th>
                 {[
                   { field: 'nome', label: 'Aluno' },
                   { field: 'nomeCurso', label: 'Curso' },
@@ -1324,12 +1418,20 @@ export default function AlunosPage() {
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-12 text-gray-400 text-sm">
+                  <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
                     Nenhum aluno encontrado.
                   </td>
                 </tr>
               ) : filtered.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors group">
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(String(s.id))}
+                      onChange={() => toggleSelected(s.id)}
+                      disabled={s.statusCertificado !== 'aprovado'}
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">

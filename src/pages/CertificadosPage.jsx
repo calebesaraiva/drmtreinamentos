@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Send, CheckCircle, Mail,
   Eye, Download, Archive, Calendar, CheckSquare, Square
@@ -76,6 +77,7 @@ function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
 
 export default function CertificadosPage() {
   const { students, courses, classes, refreshData, user } = useApp();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [preview, setPreview] = useState(null);
   const [filter, setFilter] = useState('todos');
   const [dateFilter, setDateFilter] = useState('todas');
@@ -90,6 +92,36 @@ export default function CertificadosPage() {
   const [statusMessage, setStatusMessage] = useState(null);
   const [layout, setLayout] = useState(defaultCertificateLayout);
   const [config, setConfig] = useState(defaultCertificateConfig);
+  const monthQuery = String(searchParams.get('mes') || '').trim().toLowerCase();
+  const selectedIdsQuery = String(searchParams.get('ids') || '').trim();
+  const monthMap = {
+    jan: 1, janeiro: 1,
+    fev: 2, fevereiro: 2,
+    mar: 3, marco: 3, março: 3,
+    abr: 4, abril: 4,
+    mai: 5, maio: 5,
+    jun: 6, junho: 6,
+    jul: 7, julho: 7,
+    ago: 8, agosto: 8,
+    set: 9, setembro: 9,
+    out: 10, outubro: 10,
+    nov: 11, novembro: 11,
+    dez: 12, dezembro: 12,
+  };
+  const monthNumber = monthMap[monthQuery] || null;
+  const getMonthFromValue = (value) => {
+    if (!value) return null;
+    const raw = String(value);
+    const date = new Date(raw);
+    if (!Number.isNaN(date.getTime())) return date.getMonth() + 1;
+    const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return Number(br[2]);
+    return null;
+  };
+  const matchMonth = (value) => {
+    if (!monthNumber) return true;
+    return getMonthFromValue(value) === monthNumber;
+  };
 
   useEffect(() => {
     let ignore = false;
@@ -131,6 +163,7 @@ export default function CertificadosPage() {
     .filter(student => classFilter === 'todas' || String(student.turmaId) === String(classFilter))
     .filter(student => companyFilter === 'todas' || student.empresa === companyFilter)
     .filter(student => courseFilter === 'todos' || String(student.cursoId) === String(courseFilter))
+    .filter(student => matchMonth(student.periodoFim || student.data || student.periodoInicio || student.createdAt))
     .filter(student => {
       const term = search.trim().toLowerCase();
       if (!term) return true;
@@ -207,6 +240,24 @@ export default function CertificadosPage() {
     }
   };
 
+  useEffect(() => {
+    if (!monthNumber) return;
+    if (dateFilter !== 'todas') return;
+    const firstMatchingDate = dateOptions.find((value) => getMonthFromValue(value) === monthNumber);
+    if (firstMatchingDate) setDateFilter(firstMatchingDate);
+  }, [monthNumber, dateFilter, dateOptions]);
+  useEffect(() => {
+    if (!selectedIdsQuery) return;
+    const idsFromQuery = selectedIdsQuery
+      .split(',')
+      .map(item => String(item).trim())
+      .filter(Boolean);
+    if (idsFromQuery.length === 0) return;
+    const approvedSet = new Set(aprovados.map(item => String(item.id)));
+    const validIds = idsFromQuery.filter(id => approvedSet.has(id));
+    setSelectedIds(validIds);
+  }, [selectedIdsQuery, aprovados]);
+
   return (
     <div className="space-y-5">
       <div className="rounded-2xl bg-gray-950 p-4 text-white border border-gray-900 shadow-sm">
@@ -253,6 +304,22 @@ export default function CertificadosPage() {
 
       {/* Actions */}
       <div className="card space-y-4">
+        {monthNumber && (
+          <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+            <p className="text-xs text-blue-700">Filtro do dashboard ativo: mês <strong>{monthQuery}</strong></p>
+            <button
+              type="button"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('mes');
+                setSearchParams(next);
+              }}
+              className="text-xs text-blue-700 hover:underline"
+            >
+              Limpar filtro
+            </button>
+          </div>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
           <div className="flex-1">
             <label className="block text-sm font-medium text-gray-700 mb-1">Selecionar turma</label>

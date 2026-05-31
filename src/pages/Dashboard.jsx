@@ -21,11 +21,75 @@ const chartColors = {
   grid: 'var(--cor-borda)',
 };
 
-function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
+function parseMaybeDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const isoTry = new Date(raw);
+  if (!Number.isNaN(isoTry.getTime())) return isoTry;
+  const brMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (brMatch) {
+    const [, dd, mm, yyyy] = brMatch;
+    const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    if (!Number.isNaN(dt.getTime())) return dt;
+  }
+  return null;
+}
+
+function buildMonthlySeriesFromStudents(students, monthsBack = 6) {
+  const now = new Date();
+  const buckets = [];
+  for (let i = monthsBack - 1; i >= 0; i -= 1) {
+    const ref = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    buckets.push({
+      key: `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`,
+      mes: ref.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+      alunos: 0,
+      certificados: 0,
+    });
+  }
+  const map = new Map(buckets.map((item) => [item.key, item]));
+  students.forEach((item) => {
+    const alunoDate = parseMaybeDate(item.createdAt || item.dataCadastro || item.dataCadastroAluno || item.dataCurso || item.data);
+    if (alunoDate) {
+      const key = `${alunoDate.getFullYear()}-${String(alunoDate.getMonth() + 1).padStart(2, '0')}`;
+      if (map.has(key)) map.get(key).alunos += 1;
+    }
+    if (item.statusCertificado === 'aprovado') {
+      const certDate = parseMaybeDate(item.certificadoAutorizadoEm || item.updatedAt || item.data);
+      if (certDate) {
+        const key = `${certDate.getFullYear()}-${String(certDate.getMonth() + 1).padStart(2, '0')}`;
+        if (map.has(key)) map.get(key).certificados += 1;
+      }
+    }
+  });
+  return buckets;
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }
+  return String(value);
+}
+
+function StatCard({ icon: Icon, label, value, sub, color, onClick, actionLabel, alert }) {
+  const alertClasses = alert
+    ? 'ring-2 ring-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 shadow-amber-100/80'
+    : 'bg-gradient-to-br from-white to-gray-50/80';
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className={`card cursor-pointer hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 ${onClick ? 'cursor-pointer' : ''}`}
+      className={`card group w-full text-left hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 ${onClick ? 'cursor-pointer' : ''} ${alertClasses}`}
     >
       <div className="flex items-center justify-between">
         <div>
@@ -33,11 +97,20 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }) {
           <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
           {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
         </div>
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color.replace('text-', 'bg-').replace('-600', '-100').replace('-500', '-100')}`}>
+        <div className={`relative w-12 h-12 rounded-xl flex items-center justify-center transition-transform duration-200 group-hover:scale-105 ${color.replace('text-', 'bg-').replace('-600', '-100').replace('-500', '-100')}`}>
+          {alert && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />}
           <Icon className={`w-6 h-6 ${color}`} />
         </div>
       </div>
-    </div>
+      {actionLabel && (
+        <div className="mt-3 flex items-center justify-between text-xs">
+          <span className={`${alert ? 'text-amber-700 font-semibold' : 'text-gray-500'}`}>
+            {actionLabel}
+          </span>
+          <ArrowRight className={`w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5 ${alert ? 'text-amber-700' : 'text-gray-400'}`} />
+        </div>
+      )}
+    </button>
   );
 }
 
@@ -139,6 +212,10 @@ export default function Dashboard() {
   const [quickClientDataForm, setQuickClientDataForm] = useState({ contato: '', email: '', telefone: '' });
   const [quickClientRequests, setQuickClientRequests] = useState([]);
   const [quickClientSubmitting, setQuickClientSubmitting] = useState(false);
+  const [recentSelectedIds, setRecentSelectedIds] = useState([]);
+  const [recentDetailStudent, setRecentDetailStudent] = useState(null);
+  const [chartRange, setChartRange] = useState('6m');
+  const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState(new Date());
 
   useEffect(() => {
     let ignore = false;
@@ -149,11 +226,13 @@ export default function Dashboard() {
         if (!ignore) {
           setDashboardData(data);
           setDashboardError(null);
+          setDashboardUpdatedAt(new Date());
         }
       } catch {
         if (!ignore) {
           setDashboardData(null);
           setDashboardError('Dashboard usando dados locais. API indisponível.');
+          setDashboardUpdatedAt(new Date());
         }
       }
     }
@@ -163,6 +242,9 @@ export default function Dashboard() {
       ignore = true;
     };
   }, [students, courses]);
+  useEffect(() => {
+    api.getCompanyChangeRequests().then(setQuickClientRequests).catch(() => setQuickClientRequests([]));
+  }, []);
 
   const fallbackData = useMemo(() => buildDashboardFallback(students, courses), [students, courses]);
   const dashboard = dashboardData || fallbackData;
@@ -176,11 +258,12 @@ export default function Dashboard() {
   } = dashboard.metrics;
   const pendingItems = dashboard.pendingItems || [];
   const recentStudents = dashboard.recentStudents || [];
-  const monthlyChart = dashboard.charts?.monthly || CHART_DATA_MONTHLY;
+  const monthlyChartFallback = dashboard.charts?.monthly || CHART_DATA_MONTHLY;
   const connectionWarning = dashboardData ? null : (dashboardError || apiError);
   const nextAction = getNextSuggestedAction({ alunosPendentes, certificadosEmitidos, certificadosEnviados, totalCursos });
   const certificadosParaEnviar = Math.max(0, certificadosEmitidos - certificadosEnviados);
   const certificatesToday = students.filter(s => s.statusCertificado === 'aprovado' && s.certificadoAutorizadoEm && s.certificadoAutorizadoEm.startsWith(new Date().toISOString().slice(0, 10))).length;
+  const pendenciasCriticas = alunosPendentes + certificadosParaEnviar;
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const isBusinessUser = String(user?.role || '').toLowerCase() === 'empresario';
@@ -273,6 +356,39 @@ export default function Dashboard() {
     () => courses.filter(item => String(item.status || '').toLowerCase() !== 'inativo'),
     [courses],
   );
+  const dynamicChartData = useMemo(() => {
+    if (chartRange === '6m') return buildMonthlySeriesFromStudents(students, 6);
+    if (chartRange === '12m') return buildMonthlySeriesFromStudents(students, 12);
+    const now = new Date();
+    return buildMonthlySeriesFromStudents(students, now.getMonth() + 1);
+  }, [students, chartRange]);
+  const chartData = useMemo(() => {
+    if (dynamicChartData.some(item => item.alunos > 0 || item.certificados > 0)) return dynamicChartData;
+    if (chartRange === '6m') return monthlyChartFallback.slice(-6);
+    if (chartRange === '12m') {
+      const base = [...monthlyChartFallback];
+      const extra = monthlyChartFallback.map((item, idx) => ({ ...item, mes: `${item.mes}-${idx + 1}` }));
+      return [...extra, ...base];
+    }
+    return monthlyChartFallback;
+  }, [dynamicChartData, monthlyChartFallback, chartRange]);
+  const chartTrend = useMemo(() => {
+    if (chartData.length < 2) return 0;
+    const current = chartData[chartData.length - 1]?.alunos || 0;
+    const previous = chartData[chartData.length - 2]?.alunos || 0;
+    if (previous === 0) return current > 0 ? 100 : 0;
+    return Math.round(((current - previous) / previous) * 100);
+  }, [chartData]);
+  const companyRequestPendings = useMemo(
+    () => quickClientRequests.filter(item => String(item.status || 'pendente') === 'pendente').length,
+    [quickClientRequests],
+  );
+  const healthItems = useMemo(() => ([
+    { label: 'Cadastros pendentes', value: alunosPendentes, path: '/analise' },
+    { label: 'Certificados para envio', value: certificadosParaEnviar, path: '/certificados' },
+    { label: 'Solicitações de empresa', value: companyRequestPendings, path: '/analise' },
+  ]), [alunosPendentes, certificadosParaEnviar, companyRequestPendings]);
+  const hasAnyHealthPending = healthItems.some(item => item.value > 0);
 
   const openQuickModal = (type) => {
     setQuickStatus(null);
@@ -468,6 +584,27 @@ export default function Dashboard() {
       setQuickStatus({ type: 'error', text: error?.message || 'Falha ao enviar e-mails selecionados.' });
     }
   };
+  const openQuickCertificatesWithSelection = (studentIds = []) => {
+    setQuickStatus(null);
+    setQuickModal('certificados');
+    if (studentIds.length > 0) {
+      setQuickSelectedIds(studentIds.map(item => String(item)));
+      return;
+    }
+    const defaults = students
+      .filter(item => item.statusCertificado === 'aprovado' && !item.certificadoEnviado)
+      .map(item => String(item.id));
+    setQuickSelectedIds(defaults);
+  };
+  const toggleRecentStudent = (studentId) => {
+    const id = String(studentId);
+    setRecentSelectedIds(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
+  };
+  const selectAllRecent = () => {
+    const eligibleIds = recentStudents.filter(item => item.statusCertificado === 'aprovado').map(item => String(item.id));
+    const allSelected = eligibleIds.length > 0 && eligibleIds.every(id => recentSelectedIds.includes(id));
+    setRecentSelectedIds(allSelected ? [] : eligibleIds);
+  };
 
   if (isBusinessUser) {
     return (
@@ -623,22 +760,26 @@ export default function Dashboard() {
           sub={`${alunosAprovados} aprovados`}
           color="text-blue-600"
           onClick={() => navigate('/alunos')}
+          actionLabel="Abrir lista de alunos"
         />
         <StatCard
           icon={Clock}
           label="Aguardando Análise"
           value={alunosPendentes}
-          sub="Cadastros pendentes"
+          sub={alunosPendentes > 0 ? 'Cadastros pendentes' : 'Tudo em dia'}
           color="text-amber-500"
-          onClick={() => navigate('/pendencias')}
+          onClick={() => navigate('/analise')}
+          actionLabel={alunosPendentes > 0 ? 'Prioridade de validação' : 'Sem pendências agora'}
+          alert={alunosPendentes > 0}
         />
         <StatCard
           icon={Award}
           label="Certificados Emitidos"
           value={certificadosEmitidos}
-          sub={`${certificadosEnviados} enviados`}
+          sub={`${certificadosEnviados} enviados • ${certificadosParaEnviar} para enviar`}
           color="text-green-600"
           onClick={() => navigate('/certificados')}
+          actionLabel="Abrir emissão de certificados"
         />
         <StatCard
           icon={BookOpen}
@@ -647,14 +788,17 @@ export default function Dashboard() {
           sub="Cursos ativos"
           color="text-purple-600"
           onClick={() => navigate('/qrcode')}
+          actionLabel="Gerenciar cursos e QR Code"
         />
         <StatCard
           icon={Send}
           label="Para enviar"
           value={certificadosParaEnviar}
-          sub={`${certificatesToday} certificados aprovados hoje`}
+          sub={`${certificatesToday} aprovados hoje`}
           color={certificadosParaEnviar > 0 ? 'text-red-600' : 'text-green-600'}
           onClick={() => navigate('/certificados')}
+          actionLabel={certificadosParaEnviar > 0 ? 'Enviar agora por e-mail' : 'Tudo enviado'}
+          alert={pendenciasCriticas > 0 && certificadosParaEnviar > 0}
         />
       </div>
 
@@ -662,18 +806,31 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chart */}
         <div className="card lg:col-span-2">
-          <h3 className="text-base font-bold text-gray-800 mb-4">Alunos por Mês</h3>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-gray-800">Alunos por Mês</h3>
+              <p className={`text-xs mt-1 ${chartTrend >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                {chartTrend >= 0 ? '+' : ''}{chartTrend}% vs mês anterior
+              </p>
+            </div>
+            <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-1 bg-gray-50">
+              <button type="button" onClick={() => setChartRange('6m')} className={`px-2 py-1 text-xs rounded-md ${chartRange === '6m' ? 'bg-white shadow text-gray-900' : 'text-gray-600'}`}>6 meses</button>
+              <button type="button" onClick={() => setChartRange('12m')} className={`px-2 py-1 text-xs rounded-md ${chartRange === '12m' ? 'bg-white shadow text-gray-900' : 'text-gray-600'}`}>12 meses</button>
+              <button type="button" onClick={() => setChartRange('ano')} className={`px-2 py-1 text-xs rounded-md ${chartRange === 'ano' ? 'bg-white shadow text-gray-900' : 'text-gray-600'}`}>Ano atual</button>
+            </div>
+          </div>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={monthlyChart} barGap={4}>
+            <BarChart data={chartData} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
               <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Bar dataKey="alunos" name="Alunos" fill={chartColors.primary} radius={[4, 4, 0, 0]} />
-              <Bar dataKey="certificados" name="Certificados" fill={chartColors.success} radius={[4, 4, 0, 0]} />
+              <Bar dataKey="alunos" name="Alunos" fill={chartColors.primary} radius={[4, 4, 0, 0]} onClick={(entry) => navigate(`/alunos?mes=${encodeURIComponent(entry?.mes || '')}`)} className="cursor-pointer" />
+              <Bar dataKey="certificados" name="Certificados" fill={chartColors.success} radius={[4, 4, 0, 0]} onClick={(entry) => navigate(`/certificados?mes=${encodeURIComponent(entry?.mes || '')}`)} className="cursor-pointer" />
             </BarChart>
           </ResponsiveContainer>
+          <p className="text-[11px] text-gray-500 mt-2">Dica: clique nas barras para abrir a lista filtrada por período.</p>
         </div>
 
         {/* Pending */}
@@ -685,30 +842,40 @@ export default function Dashboard() {
             )}
           </div>
           <div className="space-y-3">
-            {pendingItems.length === 0 ? (
+            {!hasAnyHealthPending ? (
               <div className="flex flex-col items-center justify-center py-6 text-gray-400">
                 <CheckCircle className="w-8 h-8 text-green-400 mb-2" />
-                <p className="text-sm">Nenhuma pendência!</p>
+                <p className="text-sm font-semibold text-green-700">Tudo em dia!</p>
+                <p className="text-xs text-gray-500 mt-1">Nenhum item crítico pendente.</p>
                 <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-xs mt-3">
-                  Ir para emissão
+                  Ver últimos emitidos
                 </button>
               </div>
             ) : (
-              pendingItems.slice(0, 5).map(s => (
-                <div key={s.id} className="flex items-center gap-3 p-2.5 bg-amber-50 rounded-lg border border-amber-100">
-                  <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              healthItems.map((item) => (
+                <button
+                  key={`health-${item.label}`}
+                  type="button"
+                  onClick={() => navigate(item.path)}
+                  className={`w-full flex items-center gap-3 p-2.5 rounded-lg border text-left ${
+                    item.value > 0 ? 'bg-amber-50 border-amber-100 hover:bg-amber-100/60' : 'bg-green-50 border-green-100 hover:bg-green-100/60'
+                  }`}
+                >
+                  {item.value > 0 ? (
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  ) : (
+                    <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0" />
+                  )}
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold text-gray-800 truncate">{s.nome}</p>
-                    <p className="text-xs text-gray-500 truncate">{s.nomeCurso}</p>
+                    <p className="text-xs font-semibold text-gray-800 truncate">{item.label}</p>
+                    <p className="text-xs text-gray-500 truncate">{item.value > 0 ? `${item.value} pendência(s)` : 'Sem pendências'}</p>
                   </div>
-                </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400 ml-auto" />
+                </button>
               ))
             )}
-            {pendingItems.length > 5 && (
-              <p className="text-xs text-gray-400 text-center">+{pendingItems.length - 5} mais</p>
-            )}
           </div>
-          {pendingItems.length > 0 && (
+          {hasAnyHealthPending && (
             <button
               onClick={() => navigate('/analise')}
               className="btn-primary w-full mt-4 text-sm"
@@ -717,6 +884,9 @@ export default function Dashboard() {
               <ArrowRight className="w-4 h-4" />
             </button>
           )}
+          <p className="text-[11px] text-gray-400 mt-3">
+            Última atualização: {dashboardUpdatedAt.toLocaleDateString('pt-BR')} às {dashboardUpdatedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </p>
         </div>
       </div>
 
@@ -724,34 +894,79 @@ export default function Dashboard() {
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-base font-bold text-gray-800">Alunos Recentes</h3>
-          <button
-            onClick={() => navigate('/alunos')}
-            className="text-blue-600 text-sm hover:underline flex items-center gap-1"
-          >
-            Ver todos <ArrowRight className="w-3 h-3" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={selectAllRecent}
+              className="btn-secondary text-xs"
+            >
+              {recentStudents.filter(item => item.statusCertificado === 'aprovado').every(item => recentSelectedIds.includes(String(item.id))) && recentSelectedIds.length > 0
+                ? 'Limpar seleção'
+                : 'Selecionar aprovados'}
+            </button>
+            <button
+              type="button"
+              onClick={() => openQuickCertificatesWithSelection(recentSelectedIds)}
+              disabled={recentSelectedIds.length === 0}
+              className="btn-primary text-xs disabled:opacity-60"
+            >
+              <Mail className="w-3 h-3" />
+              Enviar selecionados
+            </button>
+            <button
+              onClick={() => navigate('/alunos')}
+              className="text-blue-600 text-sm hover:underline flex items-center gap-1"
+            >
+              Ver todos <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-100">
+                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3 pr-2">Sel.</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Aluno</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3 hidden sm:table-cell">Curso</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Cadastro</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Certificado</th>
+                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3 hidden md:table-cell">Último envio</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {recentStudents.map(s => (
+              {recentStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-8">
+                    <div className="flex flex-col items-center text-center gap-2">
+                      <p className="text-sm font-semibold text-gray-700">Nenhum aluno recente encontrado</p>
+                      <p className="text-xs text-gray-500">Cadastre alunos ou revise pendências para gerar novos registros.</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <button type="button" className="btn-secondary text-xs" onClick={() => openQuickModal('aluno')}>Cadastrar aluno</button>
+                        <button type="button" className="btn-primary text-xs" onClick={() => navigate('/analise')}>Ir para análise</button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ) : recentStudents.map(s => (
                 <tr key={s.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="py-3 pr-2">
+                    <input
+                      type="checkbox"
+                      checked={recentSelectedIds.includes(String(s.id))}
+                      onChange={() => toggleRecentStudent(s.id)}
+                      disabled={s.statusCertificado !== 'aprovado'}
+                    />
+                  </td>
                   <td className="py-3 pr-4">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
                         <span className="text-blue-700 text-xs font-bold">{s.nome.charAt(0)}</span>
                       </div>
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate max-w-32">{s.nome}</p>
+                        <button type="button" onClick={() => setRecentDetailStudent(s)} className="text-sm font-medium text-gray-800 truncate max-w-40 text-left hover:underline">
+                          {s.nome}
+                        </button>
                         <p className="text-xs text-gray-400 truncate hidden sm:block">{s.empresa}</p>
                       </div>
                     </div>
@@ -777,11 +992,18 @@ export default function Dashboard() {
                        s.statusCertificado === 'recusado' ? 'Recusado' : 'Pendente'}
                     </span>
                   </td>
+                  <td className="py-3 hidden md:table-cell">
+                    <p className="text-xs text-gray-500">
+                      {s.certificadoEnviado
+                        ? (s.certificadoEnviadoEm ? formatDateTime(s.certificadoEnviadoEm) : (s.dataEnvio ? new Date(`${s.dataEnvio}T12:00`).toLocaleDateString('pt-BR') : 'Enviado'))
+                        : 'Ainda não enviado'}
+                    </p>
+                  </td>
                   <td className="py-3">
                     {s.statusCertificado === 'aprovado' ? (
-                      <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-xs">
+                      <button type="button" onClick={() => openQuickCertificatesWithSelection([s.id])} className="btn-secondary text-xs">
                         <Mail className="w-3 h-3" />
-                        Enviar
+                        {s.certificadoEnviado ? 'Reenviar 2ª via' : 'Enviar'}
                       </button>
                     ) : (
                       <button type="button" onClick={() => navigate('/analise')} className="btn-secondary text-xs">
@@ -796,6 +1018,42 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      <Modal
+        isOpen={!!recentDetailStudent}
+        onClose={() => setRecentDetailStudent(null)}
+        title="Detalhes rápidos do aluno"
+        size="md"
+      >
+        {recentDetailStudent && (
+          <div className="space-y-3">
+            <div className="rounded-lg border border-gray-100 p-3 bg-gray-50">
+              <p className="text-base font-bold text-gray-900">{recentDetailStudent.nome}</p>
+              <p className="text-xs text-gray-500">{recentDetailStudent.empresa || 'Empresa não informada'}</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+              <div><span className="text-gray-500">CPF:</span> <span className="text-gray-800">{recentDetailStudent.cpf || '-'}</span></div>
+              <div><span className="text-gray-500">Curso:</span> <span className="text-gray-800">{recentDetailStudent.nomeCurso || '-'}</span></div>
+              <div><span className="text-gray-500">Cadastro:</span> <span className="text-gray-800">{recentDetailStudent.statusCadastro || '-'}</span></div>
+              <div><span className="text-gray-500">Certificado:</span> <span className="text-gray-800">{recentDetailStudent.statusCertificado || '-'}</span></div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" className="btn-secondary text-xs" onClick={() => setRecentDetailStudent(null)}>Fechar</button>
+              {recentDetailStudent.statusCertificado === 'aprovado' ? (
+                <button type="button" className="btn-primary text-xs" onClick={() => { setRecentDetailStudent(null); openQuickCertificatesWithSelection([recentDetailStudent.id]); }}>
+                  <Mail className="w-3 h-3" />
+                  {recentDetailStudent.certificadoEnviado ? 'Reenviar 2ª via' : 'Enviar certificado'}
+                </button>
+              ) : (
+                <button type="button" className="btn-primary text-xs" onClick={() => { setRecentDetailStudent(null); navigate('/analise'); }}>
+                  <ClipboardCheck className="w-3 h-3" />
+                  Ir para análise
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal isOpen={quickModal === 'turma'} onClose={() => setQuickModal('')} title="Iniciar turma (rápido)" size="lg">
         <div className="space-y-4">
