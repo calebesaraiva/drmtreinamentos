@@ -7,18 +7,13 @@ import Modal from '../components/Modal';
 import BrandLogo from '../components/BrandLogo';
 import CertificateDesigner, {
   CertificatePreview,
-  getStoredCertificateLayout,
-  saveCertificateLayout,
 } from '../components/CertificateDesigner';
-import { defaultCertificateConfig, mergeCertificateConfig, sampleCertificateStudent } from '../data/certificateDefaults';
+import { defaultCertificateConfig, defaultCertificateLayout, mergeCertificateConfig, sampleCertificateStudent } from '../data/certificateDefaults';
 import { api } from '../services/api';
 
 export default function ConfiguracoesPage() {
-  const [config, setConfig] = useState(() => {
-    try { return mergeCertificateConfig(JSON.parse(localStorage.getItem('drmCertConfig') || '{}')); }
-    catch { return defaultCertificateConfig; }
-  });
-  const [certificateLayout, setCertificateLayout] = useState(() => getStoredCertificateLayout());
+  const [config, setConfig] = useState(defaultCertificateConfig);
+  const [certificateLayout, setCertificateLayout] = useState(defaultCertificateLayout);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -33,14 +28,12 @@ export default function ConfiguracoesPage() {
         if (settings?.config) {
           const nextConfig = mergeCertificateConfig(settings.config);
           setConfig(nextConfig);
-          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
         }
         if (settings?.layout) {
           setCertificateLayout(settings.layout);
-          saveCertificateLayout(settings.layout);
         }
       } catch {
-        // Mantém a configuração local se o servidor estiver indisponível.
+        // Mantém o padrão oficial se o servidor estiver indisponível.
       }
     }
     loadCertificateSettings();
@@ -57,8 +50,6 @@ export default function ConfiguracoesPage() {
   const handleSave = async (nextConfig = config, nextLayout = certificateLayout) => {
     const configToSave = mergeCertificateConfig(nextConfig);
     setSaving(true);
-    localStorage.setItem('drmCertConfig', JSON.stringify(configToSave));
-    saveCertificateLayout(nextLayout);
     setConfig(configToSave);
     setCertificateLayout(nextLayout);
     try {

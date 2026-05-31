@@ -5,8 +5,8 @@ import {
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
-import { CertificatePreview, getStoredCertificateLayout } from '../components/CertificateDesigner';
-import { defaultCertificateConfig, mergeCertificateConfig } from '../data/certificateDefaults';
+import { CertificatePreview } from '../components/CertificateDesigner';
+import { defaultCertificateConfig, defaultCertificateLayout, mergeCertificateConfig } from '../data/certificateDefaults';
 import BrandLogo from '../components/BrandLogo';
 import { api } from '../services/api';
 
@@ -88,11 +88,8 @@ export default function CertificadosPage() {
   const [signatureType, setSignatureType] = useState('digital');
   const [processing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
-  const [layout, setLayout] = useState(() => getStoredCertificateLayout());
-  const [config, setConfig] = useState(() => {
-    try { return mergeCertificateConfig(JSON.parse(localStorage.getItem('drmCertConfig') || '{}')); }
-    catch { return defaultCertificateConfig; }
-  });
+  const [layout, setLayout] = useState(defaultCertificateLayout);
+  const [config, setConfig] = useState(defaultCertificateConfig);
 
   useEffect(() => {
     let ignore = false;
@@ -103,11 +100,10 @@ export default function CertificadosPage() {
         if (settings?.config) {
           const nextConfig = mergeCertificateConfig(settings.config);
           setConfig(nextConfig);
-          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
         }
         if (settings?.layout) setLayout(settings.layout);
       } catch {
-        // Usa a configuração local caso o servidor esteja indisponível.
+        // Mantém o padrão oficial se o servidor estiver indisponível.
       }
     }
     loadCertificateSettings();

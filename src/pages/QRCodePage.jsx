@@ -3,11 +3,8 @@ import { QrCode, Plus, Download, Copy, Check, MapPin, Clock, Timer, Users, Calen
 import { QRCodeCanvas } from 'qrcode.react';
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
-import CertificateDesigner, { getStoredCertificateLayout, saveCertificateLayout } from '../components/CertificateDesigner';
-import { defaultCertificateConfig, mergeCertificateConfig } from '../data/certificateDefaults';
 import { NR_CATALOG } from '../data/nrCatalog';
 import BrandLogo from '../components/BrandLogo';
-import { api } from '../services/api';
 
 const initialForm = {
   nomeCurso: '',
@@ -173,37 +170,6 @@ export default function QRCodePage() {
     maxAlunos: '30',
   });
   const [lastQuickCourse, setLastQuickCourse] = useState(null);
-  const [layoutSaved, setLayoutSaved] = useState(false);
-  const [certificateLayout, setCertificateLayout] = useState(() => getStoredCertificateLayout());
-  const [certificateConfig, setCertificateConfig] = useState(() => {
-    try { return mergeCertificateConfig(JSON.parse(localStorage.getItem('drmCertConfig') || '{}')); }
-    catch { return defaultCertificateConfig; }
-  });
-
-  useEffect(() => {
-    let ignore = false;
-    async function loadCertificateSettings() {
-      try {
-        const settings = await api.getCertificateSettings();
-        if (ignore) return;
-        if (settings?.config) {
-          const nextConfig = mergeCertificateConfig(settings.config);
-          setCertificateConfig(nextConfig);
-          localStorage.setItem('drmCertConfig', JSON.stringify(nextConfig));
-        }
-        if (settings?.layout) {
-          setCertificateLayout(settings.layout);
-          saveCertificateLayout(settings.layout);
-        }
-      } catch {
-        // Usa a configuração local caso o servidor esteja indisponível.
-      }
-    }
-    loadCertificateSettings();
-    return () => {
-      ignore = true;
-    };
-  }, []);
 
   useEffect(() => {
     try {
@@ -266,7 +232,6 @@ export default function QRCodePage() {
     setEditingCourse(null);
     setForm({ ...initialForm });
     setErrors({});
-    setLayoutSaved(false);
   };
 
   const validate = () => {
@@ -314,16 +279,6 @@ export default function QRCodePage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleSaveCertificateLayout = async (nextConfig = certificateConfig, nextLayout = certificateLayout) => {
-    localStorage.setItem('drmCertConfig', JSON.stringify(mergeCertificateConfig(nextConfig)));
-    saveCertificateLayout(nextLayout);
-    setCertificateConfig(mergeCertificateConfig(nextConfig));
-    setCertificateLayout(nextLayout);
-    await api.updateCertificateSettings({ config: mergeCertificateConfig(nextConfig), layout: nextLayout });
-    setLayoutSaved(true);
-    setTimeout(() => setLayoutSaved(false), 2500);
   };
 
   const handleDownload = (course) => {
@@ -574,7 +529,7 @@ export default function QRCodePage() {
         isOpen={modalOpen}
         onClose={closeModal}
         title={editingCourse ? 'Editar Curso' : 'Novo Curso'}
-        size={modalTab === 'certificado' ? 'xl' : 'lg'}
+        size="lg"
       >
         <div className="space-y-4">
           <div className="flex flex-wrap gap-2">
@@ -685,19 +640,12 @@ export default function QRCodePage() {
               </div>
             </>
           ) : (
-            <CertificateDesigner
-              config={certificateConfig}
-              layout={certificateLayout}
-              onChange={setCertificateLayout}
-              onSave={handleSaveCertificateLayout}
-              onConfigChange={setCertificateConfig}
-            />
-          )}
-
-          {modalTab === 'certificado' && layoutSaved && (
-            <div className="flex items-center justify-end text-sm text-green-700">
-              <Check className="w-4 h-4 mr-1" />
-              Padrão de certificado salvo
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Padrão único de certificado</p>
+              <p className="text-xs text-amber-800 mt-1">
+                O modelo é alterado somente em <strong>Configurações &gt; Layout do Certificado</strong>.
+                Assim todo o sistema usa sempre o mesmo certificado.
+              </p>
             </div>
           )}
         </div>
