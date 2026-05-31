@@ -233,6 +233,68 @@ let certificateSettings = normalizeCertificateSettings(initialData.certificateSe
 let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? initialData.companyChangeRequests : [];
 let users = mergeEnvUsers(initialData.users || []);
 
+function ensureCatalogCourses(existingCourses = []) {
+  const normalized = Array.isArray(existingCourses) ? [...existingCourses] : [];
+  const byCode = new Map(
+    normalized
+      .map((item) => [String(item.codigoCatalogo || '').toUpperCase(), item])
+      .filter(([code]) => code),
+  );
+  let nextId = normalized.reduce((max, item) => Math.max(max, Number(item.id) || 0), 0) + 1;
+  let changed = false;
+
+  NR_CATALOG.forEach((catalogItem) => {
+    const code = String(catalogItem.code || '').toUpperCase();
+    if (!code) return;
+    const current = byCode.get(code);
+    if (current) {
+      const merged = {
+        ...current,
+        nomeCurso: current.nomeCurso || catalogItem.nomeCurso,
+        descricao: current.descricao || catalogItem.descricao || '',
+        duracao: current.duracao || catalogItem.duracao || '8 horas',
+        codigoCatalogo: current.codigoCatalogo || code,
+      };
+      if (JSON.stringify(merged) !== JSON.stringify(current)) {
+        const idx = normalized.findIndex((item) => String(item.id) === String(current.id));
+        if (idx >= 0) normalized[idx] = merged;
+        changed = true;
+      }
+      return;
+    }
+
+    const modelCourse = {
+      id: nextId++,
+      qrCode: `DRM-MODELO-${code}`,
+      local: 'A definir',
+      horarioInicio: '08:00',
+      duracao: catalogItem.duracao || '8 horas',
+      data: '2026-01-01',
+      maxAlunos: 30,
+      temInstrutor: false,
+      instrutor: '',
+      instrutorNome: '',
+      instrutorCargo: '',
+      instrutorRegistro: '',
+      nomeCurso: catalogItem.nomeCurso,
+      descricao: catalogItem.descricao || '',
+      empresaContratante: 'A definir',
+      status: 'inativo',
+      codigoVerificacao: `${code.replace(/[^A-Z0-9]/g, '')}-MODELO`,
+      tipoCurso: 'modelo',
+      codigoCatalogo: code,
+      createdAt: new Date().toISOString().slice(0, 10),
+    };
+    normalized.push(modelCourse);
+    changed = true;
+  });
+
+  return { courses: normalized, changed };
+}
+
+const catalogSync = ensureCatalogCourses(courses);
+courses = catalogSync.courses;
+
 function persistData() {
   const payload = { students, courses, classes, certificateSettings, companyChangeRequests, users };
   if (!dbPool) {
@@ -248,6 +310,10 @@ function persistData() {
   ).catch(error => {
     console.error('Erro ao persistir no PostgreSQL:', error);
   });
+}
+
+if (catalogSync.changed) {
+  persistData();
 }
 
 function updateCertificateSettings(payload) {
