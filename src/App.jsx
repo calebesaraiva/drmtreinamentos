@@ -22,6 +22,7 @@ import PublicCoursesPage from './pages/PublicCoursesPage';
 import ValidarCertificadoPage from './pages/ValidarCertificadoPage';
 import PendenciasPage from './pages/PendenciasPage';
 import BuscaGlobalPage from './pages/BuscaGlobalPage';
+import PrimeiroAcessoPage from './pages/PrimeiroAcessoPage';
 
 export default function App() {
   return (
@@ -29,6 +30,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/primeiro-acesso" element={<PrimeiroAcessoPage />} />
           <Route path="/cursos" element={<PublicCoursesPage />} />
           <Route path="/validar-certificado" element={<ValidarCertificadoPage />} />
           <Route path="/" element={<Layout />}>

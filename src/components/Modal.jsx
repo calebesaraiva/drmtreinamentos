@@ -57,7 +57,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
     <div
       className="fixed inset-0 z-50 flex items-start sm:items-center justify-center overflow-y-auto overscroll-contain p-0 sm:p-4 modal-overlay"
       style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onClick={(e) => e.stopPropagation()}
     >
       <div
         ref={modalRef}

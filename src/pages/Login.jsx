@@ -14,6 +14,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  if (user?.mustChangePassword) return <Navigate to="/primeiro-acesso" replace />;
   if (user) return <Navigate to={redirectTo} replace />;
 
   const handleSubmit = async (e) => {
@@ -29,6 +30,10 @@ export default function Login() {
     const result = await login(username, password);
     setLoading(false);
     if (result.success) {
+      if (result.user?.mustChangePassword) {
+        navigate('/primeiro-acesso', { replace: true });
+        return;
+      }
       const role = String(result.user?.role || '').toLowerCase();
       const target = location.state?.from || (role === 'empresario' ? '/pre-cadastro-empresarial' : '/dashboard');
       navigate(target, { replace: true });

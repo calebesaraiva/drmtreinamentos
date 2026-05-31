@@ -8,6 +8,9 @@ export default function Layout() {
   const { user } = useApp();
   const location = useLocation();
   if (!user) return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (user.mustChangePassword && location.pathname !== '/primeiro-acesso') {
+    return <Navigate to="/primeiro-acesso" replace />;
+  }
   const role = String(user.role || '').toLowerCase();
   const allowedBusinessRoutes = new Set(['/dashboard', '/pre-cadastro-empresarial', '/empresario-historico']);
   if (role === 'empresario' && !allowedBusinessRoutes.has(location.pathname)) {

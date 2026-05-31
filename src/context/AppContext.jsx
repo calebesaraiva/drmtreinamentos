@@ -140,6 +140,22 @@ export function AppProvider({ children }) {
     }
   }, []);
 
+  const changeOwnPassword = useCallback(async (newPassword) => {
+    try {
+      const result = await api.changeOwnPassword(newPassword);
+      setUser(result.user);
+      localStorage.setItem('drmUser', JSON.stringify(result.user));
+      setApiError(null);
+      addNotification('Senha alterada com sucesso. Acesso liberado.', 'success');
+      return { success: true, user: result.user };
+    } catch (error) {
+      const message = error?.message || 'Não foi possível alterar a senha.';
+      setApiError(message);
+      addNotification(message, 'error');
+      return { success: false, error: message };
+    }
+  }, [addNotification]);
+
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('drmUser');
@@ -493,6 +509,24 @@ export function AppProvider({ children }) {
     }
   }, [addNotification, user]);
 
+  const updateStudentProfile = useCallback(async (studentId, payload) => {
+    try {
+      const updatedStudent = await api.updateStudentProfile(studentId, payload);
+      setStudents(prev => prev.map(s => (String(s.id) === String(studentId) ? updatedStudent : s)));
+      setApiError(null);
+      addNotification('Dados do aluno atualizados com sucesso.', 'success');
+      return updatedStudent;
+    } catch (error) {
+      if (isApiResponseError(error)) {
+        setApiError(error.message);
+        addNotification(error.message, 'error');
+        return null;
+      }
+      addNotification('Backend indisponível. Não foi possível atualizar dados do aluno.', 'warning');
+      return null;
+    }
+  }, [addNotification]);
+
   const markCertificadoSent = useCallback(async (studentId) => {
     try {
       const updatedStudent = await api.markCertificateSent(studentId);
@@ -558,9 +592,10 @@ export function AppProvider({ children }) {
   const addSystemUser = useCallback(async (payload) => {
     try {
       const created = await api.createUser(payload);
-      setSystemUsers(prev => [created, ...prev]);
+      const createdUser = created?.user || created;
+      setSystemUsers(prev => [createdUser, ...prev]);
       addNotification('Usuário cadastrado com sucesso.', 'success');
-      return { success: true, user: created };
+      return { success: true, user: createdUser, temporaryPassword: created?.temporaryPassword || null };
     } catch (error) {
       const message = error?.message || 'Não foi possível cadastrar o usuário.';
       addNotification(message, 'error');
@@ -600,8 +635,8 @@ export function AppProvider({ children }) {
   }, [addNotification]);
 
   const value = {
-    user, login, logout,
-    students, setStudents, addManualStudent, updateStudentStatus, markCertificadoSent, markAllCertificadosSent,
+    user, login, logout, changeOwnPassword,
+    students, setStudents, addManualStudent, updateStudentStatus, updateStudentProfile, markCertificadoSent, markAllCertificadosSent,
     classes, addManualClass, addCompanyPreRegistration, updateClassStudentsStatus, updateClassRequestStatus,
     courses, addCourse, updateCourse, updateAttendance, updateCourseSchedule, refreshData,
     loadingData, apiError,

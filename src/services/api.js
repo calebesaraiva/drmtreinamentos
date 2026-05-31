@@ -91,6 +91,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ username, password }),
   }),
+  changeOwnPassword: (newPassword) => request('/api/auth/change-password', {
+    method: 'PATCH',
+    body: JSON.stringify({ newPassword }),
+  }),
   getUsers: () => request('/api/users'),
   createUser: (payload) => request('/api/users', {
     method: 'POST',
@@ -165,6 +169,10 @@ export const api = {
   updateStudentStatus: (studentId, field, value, motivo = null, actor = 'Responsável DRM', actorRole = 'responsavel') => request(`/api/students/${studentId}/status`, {
     method: 'PATCH',
     body: JSON.stringify({ field, value, motivo, actor, actorRole }),
+  }),
+  updateStudentProfile: (studentId, payload) => request(`/api/students/${studentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
   }),
   markCertificateSent: (studentId) => request(`/api/students/${studentId}/certificate-sent`, {
     method: 'PATCH',

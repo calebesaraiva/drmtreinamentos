@@ -515,17 +515,25 @@ function listUsers() {
   return users.map(sanitizeManagedUser);
 }
 
+function generateTemporaryPassword() {
+  const suffix = String(Date.now()).slice(-6);
+  return `Drm@${suffix}`;
+}
+
 function createManagedUser(payload = {}) {
   const name = String(payload.name || '').trim();
   const username = String(payload.username || '').trim();
   const email = String(payload.email || '').trim().toLowerCase();
-  const password = String(payload.password || '').trim();
+  const providedPassword = String(payload.password || '').trim();
   const role = normalizeUserRole(payload.role);
   const tipo = payload.tipo === 'instrutor' ? 'instrutor' : 'usuario';
   const status = role === 'empresario'
     ? normalizeUserStatus(payload.status || 'pendente')
     : normalizeUserStatus(payload.status);
   const empresa = String(payload.empresa || '').trim();
+  const password = role === 'empresario'
+    ? (providedPassword || generateTemporaryPassword())
+    : providedPassword;
 
   if (!name || !username || !email || !password) {
     return { status: 400, error: 'Nome, usuário, e-mail e senha são obrigatórios.' };
@@ -554,11 +562,16 @@ function createManagedUser(payload = {}) {
     empresa,
     tipo,
     status,
+    mustChangePassword: role === 'empresario',
+    temporaryPasswordGeneratedAt: role === 'empresario' ? new Date().toISOString() : null,
     createdAt: new Date().toISOString(),
   };
   users = [newUser, ...users];
   persistData();
-  return { user: sanitizeManagedUser(newUser) };
+  return {
+    user: sanitizeManagedUser(newUser),
+    temporaryPassword: role === 'empresario' ? password : null,
+  };
 }
 
 function updateManagedUser(id, payload = {}) {
@@ -609,6 +622,28 @@ function updateManagedUser(id, payload = {}) {
     tipo: nextTipo,
     status: nextStatus,
     updatedAt: new Date().toISOString(),
+  };
+  if (payload.password !== undefined && nextRole === 'empresario') {
+    users[index].mustChangePassword = true;
+    users[index].temporaryPasswordGeneratedAt = new Date().toISOString();
+  }
+  persistData();
+  return { user: sanitizeManagedUser(users[index]) };
+}
+
+function changeOwnPassword(auth = {}, payload = {}) {
+  const index = users.findIndex(item => String(item.id) === String(auth.sub));
+  if (index === -1) return { status: 404, error: 'Usuário não encontrado.' };
+  const nextPassword = String(payload.newPassword || '').trim();
+  if (!nextPassword || nextPassword.length < 6) {
+    return { status: 400, error: 'A nova senha deve ter pelo menos 6 caracteres.' };
+  }
+  users[index] = {
+    ...users[index],
+    password: nextPassword,
+    mustChangePassword: false,
+    temporaryPasswordGeneratedAt: null,
+    passwordUpdatedAt: new Date().toISOString(),
   };
   persistData();
   return { user: sanitizeManagedUser(users[index]) };
@@ -2103,6 +2138,38 @@ function updateClassRequestStatus(id, payload) {
   return { class: enrichClass(classUpdated) };
 }
 
+function updateStudentProfile(id, payload = {}) {
+  const index = students.findIndex(item => String(item.id) === String(id));
+  if (index === -1) return { status: 404, error: 'Aluno nao encontrado.' };
+
+  const student = students[index];
+  const nextNome = payload.nome !== undefined ? String(payload.nome || '').trim() : String(student.nome || '').trim();
+  const nextCpfRaw = payload.cpf !== undefined ? String(payload.cpf || '').trim() : String(student.cpf || '').trim();
+  const nextCpfDigits = nextCpfRaw.replace(/\D/g, '');
+
+  if (!nextNome || !nextCpfDigits) {
+    return { status: 400, error: 'Nome e CPF são obrigatórios.' };
+  }
+
+  const duplicate = students.find(item => (
+    String(item.id) !== String(id) &&
+    String(item.cursoId) === String(student.cursoId) &&
+    String(item.cpf || '').replace(/\D/g, '') === nextCpfDigits
+  ));
+  if (duplicate) {
+    return { status: 409, error: 'CPF já cadastrado neste curso para outro aluno.' };
+  }
+
+  students[index] = {
+    ...student,
+    nome: nextNome,
+    cpf: nextCpfRaw,
+    updatedAt: new Date().toISOString(),
+  };
+  persistData();
+  return { student: students[index] };
+}
+
 function deleteTestClass(id, payload = {}) {
   if (!canManageCertificates(payload)) {
     return { status: 403, error: 'Você não tem permissão para remover turma de teste.' };
@@ -2450,7 +2517,27 @@ const server = createServer(async (req, res) => {
       const authPayload = requireAuth(req, res);
       if (!authPayload) return;
       req.auth = authPayload;
+      const current = currentUserFromAuth(req.auth || {});
+      if (current?.mustChangePassword && url.pathname !== '/api/auth/change-password') {
+        sendJson(res, 403, { error: 'É obrigatório alterar a senha no primeiro acesso.', code: 'MUST_CHANGE_PASSWORD' });
+        return;
+      }
     }
+  }
+
+  if (req.method === 'PATCH' && url.pathname === '/api/auth/change-password') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = changeOwnPassword(req.auth || {}, body);
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
   }
 
   if (req.method === 'GET' && url.pathname === '/api/users') {
@@ -2477,7 +2564,7 @@ const server = createServer(async (req, res) => {
       sendJson(res, result.status, { error: result.error });
       return;
     }
-    sendJson(res, 201, result.user);
+    sendJson(res, 201, result);
     return;
   }
 
@@ -2836,6 +2923,25 @@ const server = createServer(async (req, res) => {
       ...body,
       actorRole: req.auth?.role || body.actorRole,
     });
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result.student);
+    return;
+  }
+
+  if (req.method === 'PATCH' && parts[0] === 'api' && parts[1] === 'students' && parts[2] && !parts[3]) {
+    if (!privilegedRoles.has(String(req.auth?.role || '').toLowerCase())) {
+      sendJson(res, 403, { error: 'Você não tem permissão para editar dados do aluno.' });
+      return;
+    }
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateStudentProfile(parts[2], body);
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;

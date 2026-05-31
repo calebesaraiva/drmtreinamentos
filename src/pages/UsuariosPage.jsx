@@ -30,6 +30,7 @@ export default function UsuariosPage() {
     password: '',
   });
   const [editingSave, setEditingSave] = useState(false);
+  const [tempAccessInfo, setTempAccessInfo] = useState('');
 
   const isAllowed = user?.role === 'admin' || user?.role === 'responsavel';
 
@@ -71,6 +72,11 @@ export default function UsuariosPage() {
     const result = await addSystemUser(form);
     setSaving(false);
     if (!result?.success) return;
+    if (form.role === 'empresario' && result.temporaryPassword) {
+      setTempAccessInfo(`Acesso temporário criado: usuário ${result.user.username} • senha ${result.temporaryPassword}. No primeiro login, a empresa será obrigada a trocar a senha.`);
+    } else {
+      setTempAccessInfo('');
+    }
     setForm(initialForm);
   };
 
@@ -173,6 +179,11 @@ export default function UsuariosPage() {
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
           {saving ? 'Cadastrando...' : 'Cadastrar usuário'}
         </button>
+        {tempAccessInfo && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {tempAccessInfo}
+          </div>
+        )}
       </form>
 
       <div className="card space-y-4">

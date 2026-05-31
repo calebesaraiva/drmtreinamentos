@@ -12,6 +12,8 @@ import {
 import { CHART_DATA_MONTHLY } from '../data/mockData';
 import { api } from '../services/api';
 import BrandLogo from '../components/BrandLogo';
+import Modal from '../components/Modal';
+import { ManualStudentModal } from './AlunosPage';
 
 const chartColors = {
   primary: 'var(--cor-primaria)',
@@ -95,10 +97,31 @@ function GoalCard({ icon: Icon, title, description, onClick, color }) {
 }
 
 export default function Dashboard() {
-  const { students, courses, classes, user, apiError } = useApp();
+  const { students, courses, classes, user, apiError, addCourse, addManualStudent, markAllCertificadosSent, refreshData, loadingData, addSystemUser } = useApp();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
+  const [quickModal, setQuickModal] = useState('');
+  const [quickCourseSaving, setQuickCourseSaving] = useState(false);
+  const [quickStatus, setQuickStatus] = useState(null);
+  const [quickCourseForm, setQuickCourseForm] = useState({
+    courseTemplateId: '',
+    nomeCurso: '',
+    empresaContratante: '',
+    local: '',
+    data: '',
+    horarioInicio: '08:00',
+    duracao: '8 horas',
+    maxAlunos: 30,
+  });
+  const [quickCompanyModal, setQuickCompanyModal] = useState(false);
+  const [quickCompanySaving, setQuickCompanySaving] = useState(false);
+  const [quickCompanyForm, setQuickCompanyForm] = useState({
+    empresa: '',
+    nomeResponsavel: '',
+    email: '',
+    telefone: '',
+  });
 
   useEffect(() => {
     let ignore = false;
@@ -147,6 +170,115 @@ export default function Dashboard() {
   const businessCourseRequests = useMemo(() => classes.filter(item => String(item.origem || '') === 'pre-cadastro-empresarial'), [classes]);
   const businessCourseApproved = useMemo(() => businessCourseRequests.filter(item => item.solicitacaoCursoStatus === 'aprovado').length, [businessCourseRequests]);
   const businessCoursePending = useMemo(() => businessCourseRequests.filter(item => !item.solicitacaoCursoStatus || item.solicitacaoCursoStatus === 'pendente').length, [businessCourseRequests]);
+  const aprovadosNaoEnviados = useMemo(
+    () => students.filter(item => item.statusCertificado === 'aprovado' && !item.certificadoEnviado).length,
+    [students],
+  );
+  const companyOptions = useMemo(() => {
+    const map = new Map();
+    const add = (name) => {
+      const value = String(name || '').trim();
+      if (!value) return;
+      const key = value.toLowerCase();
+      if (!map.has(key)) map.set(key, value);
+    };
+    courses.forEach(item => add(item.empresaContratante));
+    students.forEach(item => add(item.empresa));
+    classes.forEach(item => add(item.empresa?.nome));
+    return [...map.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [courses, students, classes]);
+  const activeCourseOptions = useMemo(
+    () => courses.filter(item => String(item.status || '').toLowerCase() !== 'inativo'),
+    [courses],
+  );
+
+  const openQuickModal = (type) => {
+    setQuickStatus(null);
+    setQuickModal(type);
+  };
+
+  const handleCreateQuickCourse = async () => {
+    if (!quickCourseForm.nomeCurso || !quickCourseForm.empresaContratante || !quickCourseForm.local || !quickCourseForm.data || !quickCourseForm.horarioInicio || !quickCourseForm.duracao || !quickCourseForm.maxAlunos) {
+      setQuickStatus({ type: 'error', text: 'Preencha os campos obrigatórios para iniciar a turma.' });
+      return;
+    }
+    setQuickCourseSaving(true);
+    setQuickStatus(null);
+    try {
+      const created = await addCourse({
+        ...quickCourseForm,
+        temInstrutor: false,
+        instrutorNome: '',
+        instrutorCargo: '',
+        instrutorRegistro: '',
+        status: 'ativo',
+      });
+      if (!created) return;
+      setQuickStatus({ type: 'success', text: 'Turma criada com sucesso.' });
+      await refreshData();
+    } catch (error) {
+      setQuickStatus({ type: 'error', text: error?.message || 'Não foi possível criar a turma.' });
+    } finally {
+      setQuickCourseSaving(false);
+    }
+  };
+
+  const handleSelectCourseTemplate = (templateId) => {
+    const template = activeCourseOptions.find(item => String(item.id) === String(templateId));
+    setQuickCourseForm(prev => ({
+      ...prev,
+      courseTemplateId: templateId,
+      nomeCurso: template?.nomeCurso || prev.nomeCurso,
+      local: template?.local || prev.local,
+      horarioInicio: template?.horarioInicio || prev.horarioInicio,
+      duracao: template?.duracao || prev.duracao,
+      maxAlunos: Number(template?.maxAlunos || prev.maxAlunos || 30),
+    }));
+  };
+
+  const handleCreateQuickCompany = async () => {
+    if (!quickCompanyForm.empresa || !quickCompanyForm.nomeResponsavel || !quickCompanyForm.email) {
+      setQuickStatus({ type: 'error', text: 'Preencha empresa, responsável e e-mail para cadastrar a empresa.' });
+      return;
+    }
+    const base = String(quickCompanyForm.empresa || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    const username = `emp_${base.slice(0, 12) || 'empresa'}_${String(Date.now()).slice(-4)}`;
+    const tempPassword = `Drm@${String(Date.now()).slice(-6)}`;
+    setQuickCompanySaving(true);
+    try {
+      const result = await addSystemUser({
+        name: quickCompanyForm.nomeResponsavel,
+        username,
+        email: quickCompanyForm.email,
+        password: tempPassword,
+        role: 'empresario',
+        status: 'pendente',
+        empresa: quickCompanyForm.empresa,
+      });
+      if (!result?.success) {
+        setQuickStatus({ type: 'error', text: result?.error || 'Não foi possível cadastrar a empresa.' });
+        return;
+      }
+      setQuickCourseForm(prev => ({ ...prev, empresaContratante: quickCompanyForm.empresa }));
+      setQuickCompanyModal(false);
+      setQuickStatus({
+        type: 'success',
+        text: `Empresa cadastrada para validação do responsável. Acesso criado (${username}) com senha temporária: ${result.temporaryPassword || '(gerada)'} . No primeiro login, a empresa será obrigada a trocar a senha.`,
+      });
+      setQuickCompanyForm({ empresa: '', nomeResponsavel: '', email: '', telefone: '' });
+    } finally {
+      setQuickCompanySaving(false);
+    }
+  };
+
+  const handleSendAllApproved = async () => {
+    setQuickStatus(null);
+    const result = await markAllCertificadosSent();
+    if (result) {
+      setQuickStatus({ type: 'success', text: 'Envio em lote concluído. Verifique os alertas de falha de SMTP, se houver.' });
+      await refreshData();
+    }
+  };
 
   if (isBusinessUser) {
     return (
@@ -287,9 +419,9 @@ export default function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-        <GoalCard icon={QrCode} title="Iniciar turma" description="Curso + empresa + data em segundos" onClick={() => navigate('/qrcode')} color="bg-blue-50 border-blue-100 text-blue-900" />
-        <GoalCard icon={UserPlus} title="Aluno retroativo" description="Cadastro e certificado rápido" onClick={() => navigate('/cadastro-manual')} color="bg-green-50 border-green-100 text-green-900" />
-        <GoalCard icon={Send} title="Emitir certificados" description="Baixar PDF/ZIP ou enviar e-mail" onClick={() => navigate('/certificados')} color="bg-amber-50 border-amber-100 text-amber-900" />
+        <GoalCard icon={QrCode} title="Iniciar turma" description="Curso + empresa + data em segundos" onClick={() => openQuickModal('turma')} color="bg-blue-50 border-blue-100 text-blue-900" />
+        <GoalCard icon={UserPlus} title="Aluno retroativo" description="Cadastro e certificado rápido" onClick={() => openQuickModal('aluno')} color="bg-green-50 border-green-100 text-green-900" />
+        <GoalCard icon={Send} title="Emitir certificados" description="Baixar PDF/ZIP ou enviar e-mail" onClick={() => openQuickModal('certificados')} color="bg-amber-50 border-amber-100 text-amber-900" />
         <GoalCard icon={Building2} title="Ver clientes" description="Empresas, funcionários e certificados" onClick={() => navigate('/empresas-clientes')} color="bg-slate-50 border-slate-200 text-slate-900" />
       </div>
 
@@ -475,6 +607,127 @@ export default function Dashboard() {
           </table>
         </div>
       </div>
+
+      <Modal isOpen={quickModal === 'turma'} onClose={() => setQuickModal('')} title="Iniciar turma (rápido)" size="lg">
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Curso base cadastrado *</label>
+              <select value={quickCourseForm.courseTemplateId} onChange={(e) => handleSelectCourseTemplate(e.target.value)} className="input-field">
+                <option value="">Selecione um curso cadastrado</option>
+                {activeCourseOptions.map(item => (
+                  <option key={item.id} value={item.id}>{item.nomeCurso}</option>
+                ))}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do curso *</label>
+              <input value={quickCourseForm.nomeCurso} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, nomeCurso: e.target.value }))} className="input-field" placeholder="Preenchido automaticamente pelo curso base" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+              <select value={quickCourseForm.empresaContratante} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, empresaContratante: e.target.value }))} className="input-field">
+                <option value="">Selecione empresa cadastrada</option>
+                {companyOptions.map(company => (
+                  <option key={company} value={company}>{company}</option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setQuickCompanyModal(true)} className="text-xs text-blue-700 hover:underline mt-1">
+                Empresa não cadastrada? Fazer cadastro rápido
+              </button>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Local *</label>
+              <input value={quickCourseForm.local} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, local: e.target.value }))} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Data *</label>
+              <input type="date" value={quickCourseForm.data} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, data: e.target.value }))} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Hora *</label>
+              <input type="time" value={quickCourseForm.horarioInicio} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, horarioInicio: e.target.value }))} className="input-field" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Duração *</label>
+              <input value={quickCourseForm.duracao} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, duracao: e.target.value }))} className="input-field" placeholder="Ex: 8 horas" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Vagas *</label>
+              <input type="number" min="1" value={quickCourseForm.maxAlunos} onChange={(e) => setQuickCourseForm(prev => ({ ...prev, maxAlunos: Number(e.target.value || 1) }))} className="input-field" />
+            </div>
+          </div>
+          {quickStatus && (
+            <div className={`rounded-xl border p-3 text-sm ${quickStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+              {quickStatus.text}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => navigate('/qrcode')} className="btn-secondary text-sm">Abrir tela completa</button>
+            <button type="button" onClick={handleCreateQuickCourse} disabled={quickCourseSaving} className="btn-primary text-sm disabled:opacity-60">
+              {quickCourseSaving ? 'Criando...' : 'Criar turma'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={quickCompanyModal} onClose={() => setQuickCompanyModal(false)} title="Cadastro rápido de empresa" size="md">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Empresa *</label>
+            <input value={quickCompanyForm.empresa} onChange={(e) => setQuickCompanyForm(prev => ({ ...prev, empresa: e.target.value }))} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Responsável da empresa *</label>
+            <input value={quickCompanyForm.nomeResponsavel} onChange={(e) => setQuickCompanyForm(prev => ({ ...prev, nomeResponsavel: e.target.value }))} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">E-mail *</label>
+            <input type="email" value={quickCompanyForm.email} onChange={(e) => setQuickCompanyForm(prev => ({ ...prev, email: e.target.value }))} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
+            <input value={quickCompanyForm.telefone} onChange={(e) => setQuickCompanyForm(prev => ({ ...prev, telefone: e.target.value }))} className="input-field" />
+          </div>
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-xs text-amber-800">
+            O cadastro será criado como <strong>pendente</strong> para validação do responsável DRM. Após aprovação, a empresa acessa o dashboard para completar as informações.
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" className="btn-secondary text-sm" onClick={() => setQuickCompanyModal(false)}>Cancelar</button>
+            <button type="button" className="btn-primary text-sm disabled:opacity-60" onClick={handleCreateQuickCompany} disabled={quickCompanySaving}>
+              {quickCompanySaving ? 'Cadastrando...' : 'Cadastrar empresa'}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <ManualStudentModal
+        isOpen={quickModal === 'aluno'}
+        onClose={() => setQuickModal('')}
+        courses={courses}
+        students={students}
+        onSubmit={addManualStudent}
+        loading={loadingData}
+      />
+
+      <Modal isOpen={quickModal === 'certificados'} onClose={() => setQuickModal('')} title="Emitir certificados (rápido)" size="md">
+        <div className="space-y-4">
+          <div className="rounded-xl bg-amber-50 border border-amber-100 p-3">
+            <p className="text-sm text-amber-900"><strong>{aprovadosNaoEnviados}</strong> certificado(s) aprovado(s) aguardando envio.</p>
+          </div>
+          {quickStatus && (
+            <div className={`rounded-xl border p-3 text-sm ${quickStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+              {quickStatus.text}
+            </div>
+          )}
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-sm">Abrir tela completa</button>
+            <button type="button" onClick={handleSendAllApproved} disabled={aprovadosNaoEnviados === 0 || loadingData} className="btn-primary text-sm disabled:opacity-60">
+              Enviar todos por e-mail
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

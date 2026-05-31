@@ -202,7 +202,14 @@ const manualInitialForm = {
   periodoFim: '',
   presenca: 100,
   notaProva: 10,
-  emitirCertificado: true,
+  emitirCertificado: false,
+};
+
+const courseConfirmInitial = {
+  cursoId: '',
+  local: '',
+  data: '',
+  duracao: '',
 };
 
 const companyInitialForm = {
@@ -214,15 +221,30 @@ const companyInitialForm = {
 };
 
 export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmit, loading, embedded = false }) {
+  const { updateStudentProfile } = useApp();
   const [form, setForm] = useState(manualInitialForm);
   const [companyForm, setCompanyForm] = useState(companyInitialForm);
   const [companyProfile, setCompanyProfile] = useState(null);
   const [errors, setErrors] = useState({});
   const [createdStudent, setCreatedStudent] = useState(null);
   const [sequenceCount, setSequenceCount] = useState(0);
-  const [step, setStep] = useState('empresa');
+  const [step, setStep] = useState('aluno');
   const [companyMode, setCompanyMode] = useState(null);
   const [companySearch, setCompanySearch] = useState('');
+  const [batchMode, setBatchMode] = useState(false);
+  const [registrationMode, setRegistrationMode] = useState('');
+  const [batchTarget, setBatchTarget] = useState(2);
+  const [batchSaved, setBatchSaved] = useState(0);
+  const [batchStarted, setBatchStarted] = useState(false);
+  const [batchEntries, setBatchEntries] = useState([]);
+  const [editingBatchEntry, setEditingBatchEntry] = useState(null);
+  const [entryForm, setEntryForm] = useState({ nome: '', cpf: '' });
+  const [companyLocked, setCompanyLocked] = useState(false);
+  const [showCourseConfirmModal, setShowCourseConfirmModal] = useState(false);
+  const [pendingCourseConfirm, setPendingCourseConfirm] = useState(courseConfirmInitial);
+  const [courseConfirmErrors, setCourseConfirmErrors] = useState({});
+  const [companyDataConfirmed, setCompanyDataConfirmed] = useState(false);
+  const [actionWarning, setActionWarning] = useState('');
   const activeCourses = courses.filter(course => course.status !== 'inativo');
   const selectedCourse = courses.find(course => String(course.id) === String(form.cursoId));
   const registeredCompanies = useMemo(() => {
@@ -249,28 +271,97 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
   ));
 
   const updateField = (field, value) => {
-    setForm(prev => {
-      if (field !== 'cursoId') return { ...prev, [field]: value };
+    if (field === 'cursoId') {
+      if (!value) {
+        setForm(prev => ({ ...prev, cursoId: '', data: '', horarioInicio: '', periodoInicio: '', periodoFim: '' }));
+        setPendingCourseConfirm(courseConfirmInitial);
+        setCourseConfirmErrors({});
+        setShowCourseConfirmModal(false);
+        setErrors(prev => ({ ...prev, cursoId: null }));
+        return;
+      }
+
       const course = courses.find(item => String(item.id) === String(value));
-      return {
-        ...prev,
+      setPendingCourseConfirm({
         cursoId: value,
-        data: prev.data || course?.data || '',
-        horarioInicio: prev.horarioInicio || course?.horarioInicio || '',
-        periodoInicio: prev.periodoInicio || course?.data || '',
-        periodoFim: prev.periodoFim || course?.data || '',
-      };
+        local: course?.local || '',
+        data: course?.data || '',
+        duracao: course?.duracao || '',
+      });
+      setCourseConfirmErrors({});
+      setShowCourseConfirmModal(true);
+      setErrors(prev => ({ ...prev, cursoId: null }));
+      return;
+    }
+
+    setForm(prev => {
+      return { ...prev, [field]: value };
     });
     setErrors(prev => ({ ...prev, [field]: null }));
   };
 
+  const confirmCourseInfo = () => {
+    const nextErrors = {};
+    if (!String(pendingCourseConfirm.local || '').trim()) nextErrors.local = 'Informe o local.';
+    if (!String(pendingCourseConfirm.data || '').trim()) nextErrors.data = 'Informe a data.';
+    if (!String(pendingCourseConfirm.duracao || '').trim()) nextErrors.duracao = 'Informe a duração.';
+    if (Object.keys(nextErrors).length > 0) {
+      setCourseConfirmErrors(nextErrors);
+      return;
+    }
+
+    const course = courses.find(item => String(item.id) === String(pendingCourseConfirm.cursoId));
+    setForm(prev => ({
+      ...prev,
+      cursoId: pendingCourseConfirm.cursoId,
+      data: pendingCourseConfirm.data || '',
+      periodoInicio: pendingCourseConfirm.data || '',
+      periodoFim: pendingCourseConfirm.data || '',
+      horarioInicio: prev.horarioInicio || course?.horarioInicio || '',
+    }));
+    setCourseConfirmErrors({});
+    setShowCourseConfirmModal(false);
+  };
+
+  const cancelCourseInfo = () => {
+    const currentCourse = courses.find(item => String(item.id) === String(form.cursoId));
+    setPendingCourseConfirm({
+      cursoId: form.cursoId || '',
+      local: currentCourse?.local || '',
+      data: currentCourse?.data || '',
+      duracao: currentCourse?.duracao || '',
+    });
+    setCourseConfirmErrors({});
+    setShowCourseConfirmModal(false);
+  };
+
+  const getCourseDisplay = (field) => {
+    if (!selectedCourse) return '-';
+    if (field === 'empresa') return selectedCourse.empresaContratante || 'A definir';
+    if (field === 'local') return pendingCourseConfirm.local || selectedCourse.local || '-';
+    if (field === 'data') {
+      const dateValue = pendingCourseConfirm.data || selectedCourse.data;
+      return dateValue ? new Date(`${dateValue}T12:00`).toLocaleDateString('pt-BR') : '-';
+    }
+    if (field === 'horaDuracao') {
+      return `${selectedCourse.horarioInicio || '-'} / ${pendingCourseConfirm.duracao || selectedCourse.duracao || '-'}`;
+    }
+    return '-';
+  };
+  const canConfirmCourseInfo = Boolean(
+    String(pendingCourseConfirm.local || '').trim() &&
+    String(pendingCourseConfirm.data || '').trim() &&
+    String(pendingCourseConfirm.duracao || '').trim()
+  );
+
   const updateCompanyField = (field, value) => {
     setCompanyForm(prev => ({ ...prev, [field]: value }));
+    setCompanyDataConfirmed(false);
     setErrors(prev => ({ ...prev, [field]: null }));
   };
 
   const resetCompanyStep = () => {
-    setStep('empresa');
+    setStep('aluno');
     setCompanyMode(null);
     setCompanySearch('');
     setForm(manualInitialForm);
@@ -279,6 +370,20 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
     setErrors({});
     setCreatedStudent(null);
     setSequenceCount(0);
+    setBatchMode(false);
+    setRegistrationMode('');
+    setBatchTarget(2);
+    setBatchSaved(0);
+    setBatchStarted(false);
+    setBatchEntries([]);
+    setEditingBatchEntry(null);
+    setEntryForm({ nome: '', cpf: '' });
+    setCompanyLocked(false);
+    setShowCourseConfirmModal(false);
+    setPendingCourseConfirm(courseConfirmInitial);
+    setCourseConfirmErrors({});
+    setCompanyDataConfirmed(false);
+    setActionWarning('');
   };
 
   const handleClose = () => {
@@ -302,6 +407,7 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
     setForm(prev => ({ ...prev, empresa: '' }));
     setCompanyForm(companyInitialForm);
     setCompanyProfile(null);
+    setCompanyDataConfirmed(false);
     setErrors({});
     setStep('novaEmpresa');
   };
@@ -315,7 +421,7 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
     chooseRegisteredCompany(companyName);
   };
 
-  const continueWithNewCompany = () => {
+  const registerNewCompany = () => {
     const companyName = companyForm.nome.trim();
     if (!companyName) {
       setErrors(prev => ({ ...prev, nome: 'Informe o nome da empresa.' }));
@@ -328,7 +434,17 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
       nome: companyName,
       origem: 'nova',
     });
-    setErrors({});
+    setCompanyDataConfirmed(true);
+    setErrors(prev => ({ ...prev, nome: null, companyConfirm: null }));
+  };
+
+  const continueWithNewCompany = () => {
+    if (!companyDataConfirmed) {
+      setErrors(prev => ({ ...prev, companyConfirm: 'Cadastre e confirme a empresa antes de continuar.' }));
+      setActionWarning('Para continuar, primeiro clique em "Cadastrar empresa" para confirmar os dados da empresa contratante.');
+      return;
+    }
+    setErrors(prev => ({ ...prev, companyConfirm: null }));
     setStep('aluno');
   };
 
@@ -351,11 +467,37 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
     setStep('aluno');
   };
 
-  const handleSubmit = async () => {
-    const required = ['cursoId', 'nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
-    if (!form.emitirCertificado) {
-      required.push('data', 'horarioInicio', 'periodoInicio', 'periodoFim');
+  const startBatch = () => {
+    if (!companyLocked) {
+      setErrors(prev => ({ ...prev, empresa: 'Confirme os dados da empresa antes de iniciar o lote.' }));
+      setActionWarning('Confirme a empresa contratante antes de iniciar o cadastro em lote.');
+      return;
     }
+    setBatchStarted(true);
+    setBatchSaved(0);
+    setBatchEntries([]);
+    setCreatedStudent(null);
+    setErrors({});
+    setForm(prev => ({
+      ...prev,
+      nome: '',
+      cpf: '',
+    }));
+  };
+
+  const handleSubmit = async () => {
+    if (!registrationMode) {
+      setErrors(prev => ({ ...prev, registrationMode: 'Selecione Individual ou Lote para continuar.' }));
+      setActionWarning('Selecione o modo de cadastro (Individual ou Lote) antes de salvar o aluno.');
+      return;
+    }
+
+    if (batchMode && !batchStarted) {
+      setActionWarning('No modo Lote, clique em "Iniciar lote" antes de cadastrar o aluno.');
+      return;
+    }
+
+    const required = ['cursoId', 'nome', 'cpf'];
     const nextErrors = required.reduce((acc, field) => {
       if (!String(form[field] ?? '').trim()) acc[field] = 'Obrigatório';
       return acc;
@@ -368,13 +510,56 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
 
     const created = await onSubmit({
       ...form,
+      email: '',
+      telefone: '',
+      cargo: 'Participante',
+      empresa: selectedCourse?.empresaContratante || form.empresa || 'A definir',
+      local: pendingCourseConfirm.local || selectedCourse?.local || '',
+      data: pendingCourseConfirm.data || selectedCourse?.data || '',
+      horarioInicio: selectedCourse?.horarioInicio || '',
+      periodoInicio: pendingCourseConfirm.data || selectedCourse?.data || '',
+      periodoFim: pendingCourseConfirm.data || selectedCourse?.data || '',
+      emitirCertificado: false,
       presenca: Number(form.presenca || 100),
       notaProva: Number(form.notaProva || 10),
     });
     if (created) {
+      const slot = batchSaved + 1;
       setCreatedStudent(created);
       setSequenceCount(prev => prev + 1);
+      setBatchSaved(prev => prev + 1);
+      if (batchMode && batchStarted) {
+        setBatchEntries(prev => ([
+          ...prev.filter(item => item.slot !== slot),
+          {
+            slot,
+            id: created.id,
+            nome: created.nome,
+            cpf: created.cpf,
+          },
+        ]));
+      }
     }
+  };
+
+  const openBatchEntry = (entry) => {
+    setEditingBatchEntry(entry);
+    setEntryForm({ nome: entry.nome || '', cpf: entry.cpf || '' });
+  };
+
+  const saveBatchEntry = async () => {
+    if (!editingBatchEntry?.id) return;
+    const updated = await updateStudentProfile(editingBatchEntry.id, {
+      nome: String(entryForm.nome || '').trim(),
+      cpf: String(entryForm.cpf || '').trim(),
+    });
+    if (!updated) return;
+    setBatchEntries(prev => prev.map(item => (
+      item.id === editingBatchEntry.id
+        ? { ...item, nome: updated.nome, cpf: updated.cpf }
+        : item
+    )));
+    setEditingBatchEntry(null);
   };
 
   const input = (field, label, type = 'text', placeholder = '') => (
@@ -415,11 +600,8 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
               <div>
                 <p className="text-base font-bold text-green-950">Cadastro finalizado</p>
                 <p className="text-sm text-green-800 mt-1">
-                  {createdStudent.nome} foi cadastrado em {createdStudent.nomeCurso}.
+                  {createdStudent.nome} foi cadastrado em {createdStudent.nomeCurso} e enviado para análise do responsável.
                 </p>
-                {createdStudent.certificadoAssinaturaCodigo && (
-                  <p className="text-xs font-mono text-green-700 mt-2">{createdStudent.certificadoAssinaturaCodigo}</p>
-                )}
               </div>
             </div>
           </div>
@@ -434,16 +616,23 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
             {sequenceCount > 1 && (
               <p className="text-xs text-blue-600 mt-3">{sequenceCount} alunos cadastrados nesta sequência.</p>
             )}
+            {batchMode && (
+              <p className="text-xs text-amber-700 mt-2">
+                Progresso do lote: {batchSaved}/{batchTarget} aluno(s) confirmado(s).
+              </p>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={handleClose} className="btn-secondary">
-              Encerrar
+              {batchMode && batchSaved >= batchTarget ? 'Concluir lote' : 'Encerrar'}
             </button>
-            <button type="button" onClick={handleNextSameCourse} className="btn-primary">
-              <Plus className="w-4 h-4" />
-              Cadastrar outro no mesmo curso
-            </button>
+            {(!batchMode || batchSaved < batchTarget) && (
+              <button type="button" onClick={handleNextSameCourse} className="btn-primary">
+                <Plus className="w-4 h-4" />
+                {batchMode ? 'Confirmar salvo e cadastrar próximo' : 'Cadastrar outro no mesmo curso'}
+              </button>
+            )}
           </div>
         </div>
       ) : step === 'empresa' ? (
@@ -563,11 +752,25 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
             </p>
           </div>
 
+          {companyDataConfirmed && (
+            <div className="rounded-xl border border-green-100 bg-green-50 p-3 text-xs text-green-800">
+              Empresa confirmada com sucesso. Agora você já pode continuar para o cadastro dos alunos.
+            </div>
+          )}
+          {errors.companyConfirm && <p className="text-xs text-red-500">{errors.companyConfirm}</p>}
+
           <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
             <button type="button" onClick={resetCompanyStep} className="btn-secondary">
               Voltar
             </button>
-            <button type="button" onClick={continueWithNewCompany} className="btn-primary">
+            <button type="button" onClick={registerNewCompany} className="btn-secondary">
+              Cadastrar empresa
+            </button>
+            <button
+              type="button"
+              onClick={continueWithNewCompany}
+              className="btn-primary"
+            >
               Continuar para alunos
               <ChevronDown className="w-4 h-4 -rotate-90" />
             </button>
@@ -579,9 +782,9 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
           <div className="flex items-start gap-3">
             <Award className="w-5 h-5 text-blue-700 mt-0.5" />
             <div>
-              <p className="text-sm font-bold text-blue-950">Cadastro direto com validação</p>
+              <p className="text-sm font-bold text-blue-950">Cadastro rápido para análise</p>
               <p className="text-xs text-blue-700 mt-1">
-                Empresa: <strong>{form.empresa || 'preencha no formulário'}</strong>. O aluno entra aprovado, presente e pode receber certificado assinado.
+                Cadastre apenas os dados mínimos. O certificado será liberado somente após aprovação do responsável.
               </p>
               {companyProfile?.origem === 'nova' && (
                 <p className="text-xs text-blue-600 mt-1">
@@ -590,16 +793,6 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
               )}
             </div>
           </div>
-        </div>
-
-        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase">Empresa contratante</p>
-            <p className="text-sm font-bold text-gray-900">{form.empresa || '-'}</p>
-          </div>
-          <button type="button" onClick={resetCompanyStep} disabled={loading} className="btn-secondary text-xs disabled:opacity-60">
-            Trocar empresa
-          </button>
         </div>
 
         <div>
@@ -618,55 +811,178 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
           </select>
           {errors.cursoId && <p className="text-xs text-red-500 mt-1">{errors.cursoId}</p>}
           {selectedCourse && (
-            <div className="mt-2 text-xs text-gray-500 flex flex-wrap gap-x-4 gap-y-1">
-              <span>{selectedCourse.local}</span>
-              <span>{selectedCourse.duracao}</span>
-              <span>{selectedCourse.empresaContratante}</span>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"><strong className="text-gray-700">Empresa:</strong> {getCourseDisplay('empresa')}</div>
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"><strong className="text-gray-700">Local:</strong> {getCourseDisplay('local')}</div>
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"><strong className="text-gray-700">Data:</strong> {getCourseDisplay('data')}</div>
+              <div className="rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"><strong className="text-gray-700">Hora/Duração:</strong> {getCourseDisplay('horaDuracao')}</div>
             </div>
           )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
-          {input('cpf', 'CPF *', 'text', '000.000.000-00')}
-          {input('email', 'E-mail *', 'email', 'aluno@email.com')}
-          {input('telefone', 'Telefone *', 'text', '(00) 00000-0000')}
-          {input('cargo', 'Cargo/Função *', 'text', 'Função no treinamento')}
-          {input('presenca', 'Presença (%)', 'number')}
-          {input('notaProva', 'Nota', 'number')}
+          {registrationMode && input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
+          {registrationMode && input('cpf', 'CPF *', 'text', '000.000.000-00')}
         </div>
 
-        {!form.emitirCertificado && (
-          <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-4">
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-bold text-amber-950">Dados do curso para análise</p>
-              <p className="text-xs text-amber-800 mt-1">
-                Como o certificado não será emitido agora, esses dados ficam salvos para aprovação na tela de Análise.
-              </p>
+              <p className="text-sm font-bold text-gray-900">Empresa contratante</p>
+              <p className="text-xs text-gray-500">Confirme os dados da empresa para liberar o cadastro dos alunos.</p>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {input('data', 'Data principal do curso *', 'date')}
-              {input('horarioInicio', 'Hora de início *', 'time')}
-              {input('periodoInicio', 'Data de começo *', 'date')}
-              {input('periodoFim', 'Data de finalização *', 'date')}
+            {companyLocked && <span className="badge-green">Confirmada</span>}
+          </div>
+          {!companyLocked ? (
+            <div className="space-y-2">
+              <select
+                value={form.empresa}
+                onChange={(event) => {
+                  updateField('empresa', event.target.value);
+                  setErrors(prev => ({ ...prev, empresa: null }));
+                }}
+                className={`input-field ${errors.empresa ? 'border-red-300 focus:ring-red-200' : ''}`}
+              >
+                <option value="">Selecione a empresa do curso</option>
+                {registeredCompanies.map(company => (
+                  <option key={company.nome} value={company.nome}>{company.nome}</option>
+                ))}
+                {selectedCourse?.empresaContratante && !registeredCompanies.some(item => item.nome === selectedCourse.empresaContratante) && (
+                  <option value={selectedCourse.empresaContratante}>{selectedCourse.empresaContratante}</option>
+                )}
+              </select>
+              {errors.empresa && <p className="text-xs text-red-500">{errors.empresa}</p>}
+              <div className="flex justify-between items-center gap-2">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={startManualCompany}
+                >
+                  Cadastrar empresa
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary text-xs"
+                  onClick={() => {
+                    if (!String(form.empresa || '').trim()) {
+                      setErrors(prev => ({ ...prev, empresa: 'Selecione a empresa antes de confirmar.' }));
+                      return;
+                    }
+                    setCompanyLocked(true);
+                  }}
+                >
+                  Confirmar empresa
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg bg-white border border-gray-100 px-3 py-2 text-sm flex items-center justify-between">
+              <span><strong>Empresa:</strong> {form.empresa}</span>
+              <button type="button" className="text-xs text-blue-700 hover:underline" onClick={() => setCompanyLocked(false)}>
+                Alterar
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-bold text-gray-900">Modo de cadastro</p>
+              <p className="text-xs text-gray-500">Escolha individual ou lote (sequencial).</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!companyLocked}
+                onClick={() => {
+                  setRegistrationMode('individual');
+                  setErrors(prev => ({ ...prev, registrationMode: null }));
+                  setBatchMode(false);
+                  setBatchStarted(false);
+                  setBatchSaved(0);
+                  setBatchEntries([]);
+                }}
+                className={`btn-secondary text-xs disabled:opacity-50 ${registrationMode === 'individual' ? 'ring-2 ring-blue-100' : ''}`}
+              >
+                Individual
+              </button>
+              <button
+                type="button"
+                disabled={!companyLocked}
+                onClick={() => {
+                  setRegistrationMode('lote');
+                  setErrors(prev => ({ ...prev, registrationMode: null }));
+                  setBatchMode(true);
+                }}
+                className={`btn-secondary text-xs disabled:opacity-50 ${registrationMode === 'lote' ? 'ring-2 ring-blue-100' : ''}`}
+              >
+                Lote
+              </button>
             </div>
           </div>
-        )}
+          {errors.registrationMode && (
+            <p className="mt-2 text-xs text-red-500">{errors.registrationMode}</p>
+          )}
+          {registrationMode === 'lote' && (
+            <div className="mt-3 space-y-3">
+              <div className="max-w-xs">
+                <label className="block text-xs font-medium text-gray-700 mb-1">Quantidade de alunos no lote</label>
+                <input
+                  type="number"
+                  min="2"
+                  value={batchTarget}
+                  onChange={(event) => setBatchTarget(Math.max(2, Number(event.target.value || 2)))}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      startBatch();
+                    }
+                  }}
+                  className="input-field"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button type="button" className="btn-secondary text-xs" onClick={startBatch}>
+                  Iniciar lote
+                </button>
+                {batchStarted && (
+                  <span className="text-xs text-blue-700 self-center">
+                    Preenchendo aluno {Math.min(batchSaved + 1, batchTarget)} de {batchTarget}
+                  </span>
+                )}
+              </div>
 
-        <label className="flex items-start gap-3 rounded-xl border border-green-100 bg-green-50 p-4 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={form.emitirCertificado}
-            onChange={event => updateField('emitirCertificado', event.target.checked)}
-            className="mt-1"
-          />
-          <span>
-            <span className="block text-sm font-bold text-green-900">Emitir certificado agora</span>
-            <span className="block text-xs text-green-700 mt-1">
-              Gera código de validação público, assinatura digital e tenta enviar o PDF por e-mail automaticamente.
-            </span>
-          </span>
-        </label>
+              {batchStarted && (
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {Array.from({ length: batchTarget }).map((_, index) => {
+                    const number = index + 1;
+                    const entry = batchEntries.find(item => item.slot === number);
+                    const saved = Boolean(entry);
+                    const current = number === Math.min(batchSaved + 1, batchTarget) && batchSaved < batchTarget;
+                    return (
+                      <button
+                        type="button"
+                        key={`slot-${number}`}
+                        onClick={() => entry && openBatchEntry(entry)}
+                        disabled={!entry}
+                        className={`rounded-lg border px-2 py-1 text-xs text-center ${
+                          saved
+                            ? 'bg-red-50 border-red-200 text-red-700'
+                            : current
+                              ? 'bg-blue-50 border-blue-200 text-blue-700'
+                              : 'bg-green-50 border-green-200 text-green-700'
+                        }`}
+                      >
+                        {saved ? `${number}. ${String(entry.nome || '').split(' ')[0]}` : `Aluno ${number}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2 border-t border-gray-100">
           <button type="button" onClick={resetCompanyStep} disabled={loading} className="btn-secondary disabled:opacity-60">
@@ -674,7 +990,7 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
           </button>
           <button type="button" onClick={handleSubmit} disabled={loading} className="btn-primary disabled:opacity-60 disabled:cursor-not-allowed">
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-            {loading ? 'Finalizando...' : 'Finalizar cadastro'}
+            {loading ? 'Finalizando...' : 'Cadastrar aluno para análise'}
           </button>
         </div>
       </div>
@@ -691,9 +1007,99 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
-      {content}
-    </Modal>
+    <>
+      <Modal isOpen={isOpen} onClose={handleClose} title="Adicionar aluno manualmente" size="lg">
+        {content}
+      </Modal>
+      <Modal isOpen={!!actionWarning} onClose={() => setActionWarning('')} title="Atenção" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">{actionWarning}</p>
+          <div className="flex justify-end">
+            <button type="button" className="btn-primary text-sm" onClick={() => setActionWarning('')}>
+              Entendi
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={showCourseConfirmModal}
+        onClose={cancelCourseInfo}
+        title="Confirmar dados do curso"
+        size="sm"
+      >
+        <div className="space-y-3">
+          <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-800">
+            Confirme os dados do treinamento antes de continuar com o cadastro dos alunos.
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Local</label>
+            <input
+              value={pendingCourseConfirm.local}
+              onChange={(event) => {
+                setPendingCourseConfirm(prev => ({ ...prev, local: event.target.value }));
+                setCourseConfirmErrors(prev => ({ ...prev, local: null }));
+              }}
+              className={`input-field ${courseConfirmErrors.local ? 'border-red-300 focus:ring-red-200' : ''}`}
+              placeholder="Local do treinamento"
+            />
+            {courseConfirmErrors.local && <p className="text-xs text-red-500 mt-1">{courseConfirmErrors.local}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+            <input
+              type="date"
+              value={pendingCourseConfirm.data}
+              onChange={(event) => {
+                setPendingCourseConfirm(prev => ({ ...prev, data: event.target.value }));
+                setCourseConfirmErrors(prev => ({ ...prev, data: null }));
+              }}
+              className={`input-field ${courseConfirmErrors.data ? 'border-red-300 focus:ring-red-200' : ''}`}
+            />
+            {courseConfirmErrors.data && <p className="text-xs text-red-500 mt-1">{courseConfirmErrors.data}</p>}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Duração</label>
+            <input
+              value={pendingCourseConfirm.duracao}
+              onChange={(event) => {
+                setPendingCourseConfirm(prev => ({ ...prev, duracao: event.target.value }));
+                setCourseConfirmErrors(prev => ({ ...prev, duracao: null }));
+              }}
+              className={`input-field ${courseConfirmErrors.duracao ? 'border-red-300 focus:ring-red-200' : ''}`}
+              placeholder="Ex: 8 horas"
+            />
+            {courseConfirmErrors.duracao && <p className="text-xs text-red-500 mt-1">{courseConfirmErrors.duracao}</p>}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <button type="button" onClick={cancelCourseInfo} className="btn-secondary text-sm">Cancelar</button>
+            <button
+              type="button"
+              onClick={confirmCourseInfo}
+              disabled={!canConfirmCourseInfo}
+              className="btn-primary text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Confirmar dados
+            </button>
+          </div>
+        </div>
+      </Modal>
+      <Modal isOpen={!!editingBatchEntry} onClose={() => setEditingBatchEntry(null)} title={`Aluno ${editingBatchEntry?.slot || ''} - revisar dados`} size="sm">
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nome completo</label>
+            <input value={entryForm.nome} onChange={(event) => setEntryForm(prev => ({ ...prev, nome: event.target.value }))} className="input-field" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
+            <input value={entryForm.cpf} onChange={(event) => setEntryForm(prev => ({ ...prev, cpf: event.target.value }))} className="input-field" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setEditingBatchEntry(null)} className="btn-secondary text-sm">Cancelar</button>
+            <button type="button" onClick={saveBatchEntry} className="btn-primary text-sm">Salvar alteração</button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 
