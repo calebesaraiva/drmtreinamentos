@@ -181,19 +181,17 @@ export default function CertificadosPage() {
 
   const toggleStudent = (studentId) => {
     const id = String(studentId);
-    setSelectedIds(prev => (
-      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
-    ));
+    setSelectedIds(prev => (prev.includes(id) ? [] : [id]));
   };
 
   const selectVisible = () => {
     const visibleIds = display.map(student => String(student.id));
-    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
-    setSelectedIds(prev => (
-      allSelected
-        ? prev.filter(id => !visibleIds.includes(id))
-        : [...new Set([...prev, ...visibleIds])]
-    ));
+    if (visibleIds.length === 0) {
+      setSelectedIds([]);
+      return;
+    }
+    const first = visibleIds[0];
+    setSelectedIds(prev => (prev.includes(first) ? [] : [first]));
   };
 
   const downloadBlob = ({ blob, filename }) => {
@@ -209,7 +207,7 @@ export default function CertificadosPage() {
 
   const handleBatchAction = async () => {
     if (selectedIds.length === 0) {
-      setStatusMessage({ type: 'error', text: 'Selecione ao menos um aluno.' });
+      setStatusMessage({ type: 'error', text: 'Selecione 1 aluno para emitir/enviar.' });
       return;
     }
     setProcessing(true);
@@ -227,10 +225,7 @@ export default function CertificadosPage() {
         setStatusMessage({ type: 'success', text: 'Envio por e-mail processado.' });
       } else {
         downloadBlob(result);
-        setStatusMessage({
-          type: 'success',
-          text: selectedIds.length > 1 ? 'Arquivo ZIP gerado com os certificados.' : 'PDF do certificado gerado.',
-        });
+        setStatusMessage({ type: 'success', text: 'PDF do certificado gerado.' });
       }
       await refreshData();
     } catch (error) {
@@ -304,6 +299,11 @@ export default function CertificadosPage() {
 
       {/* Actions */}
       <div className="card space-y-4">
+        <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+          <p className="text-xs text-amber-800">
+            Emissão controlada: para segurança, o sistema permite emitir/enviar <strong>1 certificado por vez</strong>.
+          </p>
+        </div>
         {monthNumber && (
           <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
             <p className="text-xs text-blue-700">Filtro do dashboard ativo: mês <strong>{monthQuery}</strong></p>
@@ -369,7 +369,7 @@ export default function CertificadosPage() {
             className="btn-secondary text-sm whitespace-nowrap"
           >
             <CheckSquare className="w-4 h-4" />
-            Selecionar alunos exibidos
+            Selecionar primeiro aluno exibido
           </button>
         </div>
 
@@ -377,9 +377,9 @@ export default function CertificadosPage() {
           <div className="space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {[
-                { value: 'both', label: 'E-mail + PDF/ZIP', icon: Archive },
+                { value: 'both', label: 'E-mail + PDF', icon: Archive },
                 { value: 'email', label: 'Somente e-mail', icon: Mail },
-                { value: 'pdf', label: 'Somente PDF/ZIP', icon: Download },
+                { value: 'pdf', label: 'Somente PDF', icon: Download },
               ].map(({ value, label, icon: Icon }) => (
                 <button
                   key={value}

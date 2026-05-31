@@ -2391,6 +2391,9 @@ async function exportCertificates(payload) {
     .map(id => students.find(student => String(student.id) === String(id)))
     .filter(Boolean);
   if (selected.length === 0) return { status: 404, error: 'Nenhum aluno encontrado.' };
+  if (selected.length > 1) {
+    return { status: 400, error: 'Para manter o controle da validação, a emissão é permitida para 1 certificado por vez.' };
+  }
   const invalid = selected.find(student => student.statusCertificado !== 'aprovado');
   if (invalid) return { status: 400, error: `Certificado nao aprovado para ${invalid.nome}.` };
 
@@ -2453,21 +2456,9 @@ async function exportCertificates(payload) {
     };
   }
 
-  if (selected.length === 1) {
-    const current = updatedById.get(String(selected[0].id)) || selected[0];
-    const pdf = await generateCertificatePdf(current, { signatureType });
-    return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
-  }
-
-  const zip = new JSZip();
-  for (const student of selected) {
-    const current = updatedById.get(String(student.id)) || student;
-    const pdf = await generateCertificatePdf(current, { signatureType });
-    zip.file(certificateFileName(current), pdf);
-  }
-  const buffer = await zip.generateAsync({ type: 'nodebuffer' });
-  const date = sanitizeFileName(payload.date || new Date().toISOString().split('T')[0]);
-  return { buffer, contentType: 'application/zip', filename: `certificados-${date}.zip` };
+  const current = updatedById.get(String(selected[0].id)) || selected[0];
+  const pdf = await generateCertificatePdf(current, { signatureType });
+  return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
 }
 
 function validateCertificate(code) {
