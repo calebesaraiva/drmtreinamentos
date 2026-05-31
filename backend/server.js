@@ -669,6 +669,7 @@ function buildCertificateAuthorization(actorName = 'Responsável DRM') {
     certificadoAutorizadoEm: now.toISOString(),
     certificadoAutorizadoPor: actorName,
     certificadoAssinaturaCodigo: `DRM-CERT-${stamp}-${String(now.getTime()).slice(-6)}`,
+    certificadoTemplateVersion: Number(certificateSettings?.standardVersion || CERTIFICATE_STANDARD_VERSION),
   };
 }
 
@@ -802,6 +803,7 @@ function clearCertificateAuthorization(student) {
   delete updated.certificadoAutorizadoEm;
   delete updated.certificadoAutorizadoPor;
   delete updated.certificadoAssinaturaCodigo;
+  delete updated.certificadoTemplateVersion;
   return updated;
 }
 
@@ -1569,11 +1571,15 @@ async function createManualStudent(payload) {
     String(student.cursoId) === String(course.id) &&
     String(student.cpf || '').replace(/\D/g, '') === String(payload.cpf || '').replace(/\D/g, '')
   ));
-  if (duplicate) return { status: 409, error: 'CPF ja cadastrado para este curso.' };
+  if (duplicate) {
+    return {
+      status: 409,
+      error: `CPF ja cadastrado para este curso (${duplicate.nome || 'Aluno'}). Valide o certificado existente antes de novo cadastro.`,
+    };
+  }
 
-  const actor = payload.actor || 'Responsável DRM';
-  const emitirCertificado = payload.emitirCertificado !== false;
   const now = new Date().toISOString();
+  const today = new Date().toISOString().slice(0, 10);
   const studentDate = String(payload.data || course.data || '').trim();
   const studentStartTime = String(payload.horarioInicio || course.horarioInicio || '').trim();
   const studentLocation = String(payload.local || course.local || '').trim();
@@ -1584,8 +1590,13 @@ async function createManualStudent(payload) {
   const studentPhone = String(payload.telefone || '').trim();
   const studentCompany = String(payload.empresa || '').trim() || 'A definir';
   const studentRole = String(payload.cargo || '').trim() || 'Participante';
+  const isRetroativo = Boolean(payload.cadastroRetroativo) || (studentDate && studentDate < today);
+  const motivoRetroativo = String(payload.motivoRetroativo || '').trim();
+  if (isRetroativo && !motivoRetroativo) {
+    return { status: 400, error: 'Informe o motivo do cadastro retroativo para envio a analise.' };
+  }
   const nextId = students.reduce((max, student) => Math.max(max, Number(student.id) || 0), 0) + 1;
-  let student = {
+  const student = {
     id: nextId,
     nome: String(payload.nome).trim(),
     cpf: String(payload.cpf).trim(),
@@ -1606,8 +1617,8 @@ async function createManualStudent(payload) {
     instrutorNome: course.instrutorNome,
     instrutorCargo: course.instrutorCargo,
     instrutorRegistro: course.instrutorRegistro,
-    statusCadastro: 'aprovado',
-    statusCertificado: emitirCertificado ? 'aprovado' : 'pendente',
+    statusCadastro: 'pendente',
+    statusCertificado: 'pendente',
     certificadoEnviado: false,
     dataEnvio: null,
     presente: true,
@@ -1615,33 +1626,13 @@ async function createManualStudent(payload) {
     notaProva: Number(payload.notaProva || 10),
     foto: null,
     motivoRecusa: null,
-    origemCadastro: 'manual',
+    origemCadastro: isRetroativo ? 'manual-retroativo' : 'manual',
+    cadastroRetroativo: isRetroativo,
+    motivoRetroativo: motivoRetroativo || null,
     inscritoEm: now,
-    chamadaRealizadaEm: now,
-    chamadaPor: actor,
+    chamadaRealizadaEm: null,
+    chamadaPor: null,
   };
-
-  if (emitirCertificado) {
-    student = {
-      ...student,
-      ...buildCertificateAuthorization(actor),
-    };
-
-    try {
-      const emailResult = await sendCertificateEmail(student);
-      student = {
-        ...student,
-        certificadoEnviado: emailResult.sent,
-        dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : null,
-        certificadoEmailErro: emailResult.sent ? null : emailResult.error,
-      };
-    } catch (error) {
-      student = {
-        ...student,
-        certificadoEmailErro: error.message || 'Erro ao enviar certificado por e-mail.',
-      };
-    }
-  }
 
   students = [...students, student];
   persistData();

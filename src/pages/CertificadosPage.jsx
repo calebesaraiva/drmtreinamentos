@@ -117,6 +117,12 @@ export default function CertificadosPage() {
   }, []);
 
   const aprovados = students.filter(s => s.statusCertificado === 'aprovado');
+  const prontosParaEmissao = students.filter(s => s.statusCadastro === 'aprovado' && s.statusCertificado === 'aprovado');
+  const comPendencia = students.filter(s =>
+    s.statusCadastro !== 'aprovado' ||
+    s.statusCertificado !== 'aprovado' ||
+    (s.cadastroRetroativo && !s.motivoRetroativo)
+  );
   const enviados = aprovados.filter(s => s.certificadoEnviado);
   const pendentes = aprovados.filter(s => !s.certificadoEnviado);
   const dateOptions = [...new Set(aprovados.map(s => s.periodoFim || s.data).filter(Boolean))]
@@ -233,6 +239,19 @@ export default function CertificadosPage() {
           <Mail className="w-8 h-8 text-blue-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-blue-700">{pendentes.length}</p>
           <p className="text-xs text-gray-500">Aguardando Envio</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="card border border-green-100 bg-green-50">
+          <p className="text-xs uppercase font-semibold text-green-700">Conferência Final</p>
+          <p className="text-2xl font-bold text-green-800 mt-1">{prontosParaEmissao.length}</p>
+          <p className="text-sm text-green-700">Prontos para emitir</p>
+        </div>
+        <div className="card border border-amber-100 bg-amber-50">
+          <p className="text-xs uppercase font-semibold text-amber-700">Conferência Final</p>
+          <p className="text-2xl font-bold text-amber-800 mt-1">{comPendencia.length}</p>
+          <p className="text-sm text-amber-700">Com pendência de análise/validação</p>
         </div>
       </div>
 
@@ -420,6 +439,11 @@ export default function CertificadosPage() {
                     {aluno.certificadoAutorizadoEm && (
                       <p className="text-xs text-blue-600 mt-0.5">
                         Assinado em {formatDateTime(aluno.certificadoAutorizadoEm)}
+                      </p>
+                    )}
+                    {aluno.certificadoTemplateVersion && (
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Modelo padrão v{aluno.certificadoTemplateVersion}
                       </p>
                     )}
                     {(aluno.periodoFim || aluno.data) && (

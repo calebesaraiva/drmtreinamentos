@@ -203,6 +203,8 @@ const manualInitialForm = {
   presenca: 100,
   notaProva: 10,
   emitirCertificado: false,
+  cadastroRetroativo: false,
+  motivoRetroativo: '',
 };
 
 const courseConfirmInitial = {
@@ -508,6 +510,11 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
       return;
     }
 
+    if (form.cadastroRetroativo && !String(form.motivoRetroativo || '').trim()) {
+      setErrors(prev => ({ ...prev, motivoRetroativo: 'Informe o motivo para cadastro retroativo.' }));
+      return;
+    }
+
     const created = await onSubmit({
       ...form,
       email: '',
@@ -520,6 +527,8 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
       periodoInicio: pendingCourseConfirm.data || selectedCourse?.data || '',
       periodoFim: pendingCourseConfirm.data || selectedCourse?.data || '',
       emitirCertificado: false,
+      cadastroRetroativo: Boolean(form.cadastroRetroativo),
+      motivoRetroativo: String(form.motivoRetroativo || '').trim(),
       presenca: Number(form.presenca || 100),
       notaProva: Number(form.notaProva || 10),
     });
@@ -824,6 +833,31 @@ export function ManualStudentModal({ isOpen, onClose, courses, students, onSubmi
           {registrationMode && input('nome', 'Nome completo *', 'text', 'Nome do aluno')}
           {registrationMode && input('cpf', 'CPF *', 'text', '000.000.000-00')}
         </div>
+
+        {registrationMode && (
+          <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-800">
+              <input
+                type="checkbox"
+                checked={Boolean(form.cadastroRetroativo)}
+                onChange={(event) => updateField('cadastroRetroativo', event.target.checked)}
+              />
+              Cadastro retroativo (curso realizado em data anterior)
+            </label>
+            {form.cadastroRetroativo && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Motivo do retroativo *</label>
+                <textarea
+                  value={form.motivoRetroativo || ''}
+                  onChange={(event) => updateField('motivoRetroativo', event.target.value)}
+                  className={`input-field min-h-24 ${errors.motivoRetroativo ? 'border-red-300 focus:ring-red-200' : ''}`}
+                  placeholder="Ex: turma antiga de 2025 para emissão de certificado após conferência."
+                />
+                {errors.motivoRetroativo && <p className="text-xs text-red-500 mt-1">{errors.motivoRetroativo}</p>}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
