@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { MOCK_STUDENTS, MOCK_COURSES } from '../data/mockData';
 import { api } from '../services/api';
 
@@ -72,6 +72,7 @@ export function AppProvider({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
+  const businessLastSnapshotRef = useRef({ approved: 0, pending: 0, certs: 0 });
 
   useEffect(() => {
     api.setToken(localStorage.getItem('drmAuthToken') || '');
@@ -230,6 +231,21 @@ export function AppProvider({ children }) {
     }, 15000);
     return () => clearInterval(timer);
   }, [user, refreshData]);
+
+  useEffect(() => {
+    const role = String(user?.role || '').toLowerCase();
+    if (role !== 'empresario') return;
+    const approved = students.filter(item => item.statusCadastro === 'aprovado').length;
+    const pending = students.filter(item => item.statusCadastro === 'pendente' || item.statusCertificado === 'pendente').length;
+    const certs = students.filter(item => item.statusCertificado === 'aprovado').length;
+    const prev = businessLastSnapshotRef.current;
+    if (prev.approved > 0 || prev.pending > 0 || prev.certs > 0) {
+      if (approved > prev.approved) addNotification('DRM aprovou novo(s) aluno(s) da sua empresa.', 'success');
+      if (certs > prev.certs) addNotification('Novo(s) certificado(s) foram liberados para sua empresa.', 'success');
+      if (pending < prev.pending) addNotification('Pendências da sua empresa foram atualizadas.', 'info');
+    }
+    businessLastSnapshotRef.current = { approved, pending, certs };
+  }, [students, user, addNotification]);
 
   const updateAttendance = useCallback(async (courseId, attendance) => {
     const actorName = user?.name || 'Responsável DRM';

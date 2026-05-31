@@ -1521,10 +1521,13 @@ async function createManualStudent(payload) {
   const course = normalizeCourse(courses.find(item => String(item.id) === String(payload.cursoId)) || {});
   if (!course.id) return { status: 404, error: 'Curso nao encontrado.' };
 
-  const required = ['nome', 'cpf', 'email', 'telefone', 'empresa', 'cargo'];
+  const required = ['nome', 'cpf'];
   const missing = required.filter(field => !payload[field] || String(payload[field]).trim() === '');
   if (missing.length > 0) {
     return { status: 400, error: `Campos obrigatorios: ${missing.join(', ')}` };
+  }
+  if (payload.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(payload.email || '').trim())) {
+    return { status: 400, error: 'E-mail invalido.' };
   }
 
   const duplicate = students.find(student => (

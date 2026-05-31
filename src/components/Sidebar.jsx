@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Users, ClipboardCheck,
   Send, Settings, BarChart3, LogOut, X, ListChecks,
-  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2
+  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2, ListTodo, Search
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import BrandLogo from './BrandLogo';
@@ -19,6 +19,8 @@ const navItems = [
   { to: '/cadastro-manual', icon: UserPlus, label: 'Cadastro rápido aluno', highlight: true, visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/nova-turma-manual', icon: UserPlus, label: 'Nova turma manual', highlight: true, visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/analise', icon: ClipboardCheck, label: 'Análise', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/pendencias', icon: ListTodo, label: 'Fila única', visibleRoles: ['admin', 'responsavel', 'usuario'] },
+  { to: '/busca-global', icon: Search, label: 'Busca global', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/certificados', icon: Send, label: 'Enviar Certificados', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/usuarios', icon: UserCog, label: 'Usuários', visibleRoles: ['admin', 'responsavel'] },

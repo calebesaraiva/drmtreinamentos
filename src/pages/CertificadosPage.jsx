@@ -27,6 +27,12 @@ function formatDateTime(dateTime) {
   });
 }
 
+function toWhatsAppLink(phone = '', message = '') {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
 function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
   if (!aluno) return null;
   const course = courses.find(item => String(item.id) === String(aluno.cursoId));
@@ -433,6 +439,19 @@ export default function CertificadosPage() {
                     <Eye className="w-3.5 h-3.5" />
                     Visualizar
                   </button>
+                  {aluno.telefone && (
+                    <a
+                      href={toWhatsAppLink(
+                        aluno.telefone,
+                        `Olá ${aluno.nome}, seu certificado do curso ${aluno.nomeCurso} está disponível no portal DRM.`,
+                      )}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-secondary text-xs py-1.5 px-3"
+                    >
+                      WhatsApp
+                    </a>
+                  )}
                 </div>
               </div>
             </div>

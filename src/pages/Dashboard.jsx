@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Users, Award, ClipboardCheck, QrCode,
   AlertTriangle, CheckCircle, Clock,
-  ArrowRight, BookOpen, UserPlus, Building2, Send, PlayCircle
+  ArrowRight, BookOpen, UserPlus, Building2, Send, PlayCircle, Mail
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import {
@@ -69,8 +69,8 @@ function buildDashboardFallback(students, courses) {
 
 function getNextSuggestedAction({ alunosPendentes, certificadosEmitidos, certificadosEnviados, totalCursos }) {
   if (totalCursos === 0) return { label: 'Iniciar primeira turma', path: '/qrcode' };
-  if (alunosPendentes > 0) return { label: 'Revisar pendências da análise', path: '/analise' };
   if (certificadosEmitidos > certificadosEnviados) return { label: 'Enviar certificados pendentes', path: '/certificados' };
+  if (alunosPendentes > 0) return { label: 'Revisar pendências da análise', path: '/analise' };
   return { label: 'Cadastrar turma rapidamente', path: '/qrcode' };
 }
 
@@ -137,23 +137,10 @@ export default function Dashboard() {
   const pendingItems = dashboard.pendingItems || [];
   const recentStudents = dashboard.recentStudents || [];
   const monthlyChart = dashboard.charts?.monthly || CHART_DATA_MONTHLY;
-  const connectionWarning = dashboardError || apiError;
+  const connectionWarning = dashboardData ? null : (dashboardError || apiError);
   const nextAction = getNextSuggestedAction({ alunosPendentes, certificadosEmitidos, certificadosEnviados, totalCursos });
+  const certificadosParaEnviar = Math.max(0, certificadosEmitidos - certificadosEnviados);
   const certificatesToday = students.filter(s => s.statusCertificado === 'aprovado' && s.certificadoAutorizadoEm && s.certificadoAutorizadoEm.startsWith(new Date().toISOString().slice(0, 10))).length;
-  const avgClassSetupMinutes = useMemo(() => {
-    if (!Array.isArray(classes) || classes.length === 0) return '-';
-    const values = classes
-      .map(item => {
-        const created = Date.parse(item.createdAt || item.criadaEm || '');
-        const firstHistory = Array.isArray(item.historico) && item.historico[0]?.em ? Date.parse(item.historico[0].em) : NaN;
-        if (Number.isNaN(created) || Number.isNaN(firstHistory)) return null;
-        return Math.max(1, Math.round((firstHistory - created) / 60000));
-      })
-      .filter(value => Number.isFinite(value));
-    if (!values.length) return '-';
-    return Math.round(values.reduce((acc, item) => acc + item, 0) / values.length);
-  }, [classes]);
-
   const hora = new Date().getHours();
   const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
   const isBusinessUser = String(user?.role || '').toLowerCase() === 'empresario';
@@ -164,6 +151,29 @@ export default function Dashboard() {
   if (isBusinessUser) {
     return (
       <div className="space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className={`rounded-xl border px-4 py-3 ${alunosPendentes > 0 ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}`}>
+            <p className="text-xs text-gray-600">Situação de análise</p>
+            <p className={`text-lg font-bold ${alunosPendentes > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+              {alunosPendentes > 0 ? `${alunosPendentes} pendência(s)` : 'Sem pendências'}
+            </p>
+          </div>
+          <div className={`rounded-xl border px-4 py-3 ${certificadosParaEnviar > 0 ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+            <p className="text-xs text-gray-600">Situação de emissão</p>
+            <p className={`text-lg font-bold ${certificadosParaEnviar > 0 ? 'text-red-700' : 'text-green-700'}`}>
+              {certificadosParaEnviar > 0 ? `${certificadosParaEnviar} certificado(s) para enviar` : 'Tudo enviado'}
+            </p>
+          </div>
+          <div className="rounded-xl border bg-blue-50 border-blue-200 px-4 py-3">
+            <p className="text-xs text-blue-700">Ações rápidas</p>
+            <div className="mt-2 flex gap-2 flex-wrap">
+              <button type="button" onClick={() => navigate('/qrcode')} className="btn-secondary text-xs">+ Nova turma</button>
+              <button type="button" onClick={() => navigate('/cadastro-manual')} className="btn-secondary text-xs">+ Cadastro rápido</button>
+              <button type="button" onClick={() => navigate('/pendencias')} className="btn-secondary text-xs">Fila única</button>
+            </div>
+          </div>
+        </div>
+
         {connectionWarning && (
           <div className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
             <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
@@ -284,7 +294,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           icon={Users}
           label="Total de Alunos"
@@ -299,7 +309,7 @@ export default function Dashboard() {
           value={alunosPendentes}
           sub="Cadastros pendentes"
           color="text-amber-500"
-          onClick={() => navigate('/analise')}
+          onClick={() => navigate('/pendencias')}
         />
         <StatCard
           icon={Award}
@@ -318,12 +328,12 @@ export default function Dashboard() {
           onClick={() => navigate('/qrcode')}
         />
         <StatCard
-          icon={Clock}
-          label="Tempo médio de setup"
-          value={avgClassSetupMinutes === '-' ? '-' : `${avgClassSetupMinutes} min`}
+          icon={Send}
+          label="Para enviar"
+          value={certificadosParaEnviar}
           sub={`${certificatesToday} certificados aprovados hoje`}
-          color="text-slate-600"
-          onClick={() => navigate('/nova-turma-manual')}
+          color={certificadosParaEnviar > 0 ? 'text-red-600' : 'text-green-600'}
+          onClick={() => navigate('/certificados')}
         />
       </div>
 
@@ -358,6 +368,9 @@ export default function Dashboard() {
               <div className="flex flex-col items-center justify-center py-6 text-gray-400">
                 <CheckCircle className="w-8 h-8 text-green-400 mb-2" />
                 <p className="text-sm">Nenhuma pendência!</p>
+                <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-xs mt-3">
+                  Ir para emissão
+                </button>
               </div>
             ) : (
               pendingItems.slice(0, 5).map(s => (
@@ -405,6 +418,7 @@ export default function Dashboard() {
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3 hidden sm:table-cell">Curso</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Cadastro</th>
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Certificado</th>
+                <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider pb-3">Ação</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -441,6 +455,19 @@ export default function Dashboard() {
                       {s.statusCertificado === 'aprovado' ? 'Aprovado' :
                        s.statusCertificado === 'recusado' ? 'Recusado' : 'Pendente'}
                     </span>
+                  </td>
+                  <td className="py-3">
+                    {s.statusCertificado === 'aprovado' ? (
+                      <button type="button" onClick={() => navigate('/certificados')} className="btn-secondary text-xs">
+                        <Mail className="w-3 h-3" />
+                        Enviar
+                      </button>
+                    ) : (
+                      <button type="button" onClick={() => navigate('/analise')} className="btn-secondary text-xs">
+                        <ClipboardCheck className="w-3 h-3" />
+                        Analisar
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

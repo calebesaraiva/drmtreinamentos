@@ -13,6 +13,8 @@ const PAGE_TITLES = {
   '/cadastro-manual': 'Cadastro Manual',
   '/nova-turma-manual': 'Nova turma manual',
   '/analise': 'Análise de Cadastros',
+  '/pendencias': 'Fila Única de Pendências',
+  '/busca-global': 'Busca Global',
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',
   '/usuarios': 'Usuários',

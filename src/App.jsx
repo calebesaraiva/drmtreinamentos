@@ -20,6 +20,8 @@ import PreCadastroEmpresarialPage from './pages/PreCadastroEmpresarialPage';
 import EmpresarioHistoricoPage from './pages/EmpresarioHistoricoPage';
 import PublicCoursesPage from './pages/PublicCoursesPage';
 import ValidarCertificadoPage from './pages/ValidarCertificadoPage';
+import PendenciasPage from './pages/PendenciasPage';
+import BuscaGlobalPage from './pages/BuscaGlobalPage';
 
 export default function App() {
   return (
@@ -39,6 +41,8 @@ export default function App() {
             <Route path="cadastro-manual" element={<CadastroManualPage />} />
             <Route path="nova-turma-manual" element={<NovaTurmaManualPage />} />
             <Route path="analise" element={<AnalisePage />} />
+            <Route path="pendencias" element={<PendenciasPage />} />
+            <Route path="busca-global" element={<BuscaGlobalPage />} />
             <Route path="certificados" element={<CertificadosPage />} />
             <Route path="relatorios" element={<RelatoriosPage />} />
             <Route path="usuarios" element={<UsuariosPage />} />

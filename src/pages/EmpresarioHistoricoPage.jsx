@@ -130,6 +130,29 @@ export default function EmpresarioHistoricoPage() {
           {filteredStudents.length === 0 && <p className="text-sm text-gray-500 py-4">Nenhum aluno encontrado.</p>}
         </div>
       </div>
+
+      <div className="card">
+        <h3 className="font-bold text-gray-900 mb-3">Linha do tempo das turmas</h3>
+        <div className="space-y-3">
+          {sortedClasses.slice(0, 10).map((item) => (
+            <div key={`timeline-${item.id}`} className="rounded-xl border border-gray-100 p-3">
+              <p className="font-semibold text-gray-900">{item.nomeCurso || item.nome}</p>
+              <p className="text-xs text-gray-500">{item.empresa?.nome || '-'} • {formatDate(item.data)} • {item.local || 'Local não informado'}</p>
+              <div className="mt-2 space-y-1">
+                {(item.historico || []).slice(-4).reverse().map((event) => (
+                  <p key={`${item.id}-${event.em}-${event.tipo}`} className="text-xs text-gray-600">
+                    {event.em ? new Date(event.em).toLocaleDateString('pt-BR') : '-'} • {event.tipo} • {event.detalhe || '-'}
+                  </p>
+                ))}
+                {(!item.historico || item.historico.length === 0) && (
+                  <p className="text-xs text-gray-500">Sem movimentações registradas.</p>
+                )}
+              </div>
+            </div>
+          ))}
+          {sortedClasses.length === 0 && <p className="text-sm text-gray-500">Nenhuma turma encontrada.</p>}
+        </div>
+      </div>
     </div>
   );
 }
