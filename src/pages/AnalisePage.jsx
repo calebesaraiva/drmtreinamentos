@@ -786,93 +786,24 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         setDraftStatus('Nenhum rascunho encontrado para este curso.');
         return;
       }
-      const snapshotByCourse = new Map(
-        (Array.isArray(draft.courseFormsSnapshot) ? draft.courseFormsSnapshot : [])
-          .map((item) => [String(item?.cursoId || '').trim(), item]),
-      );
-
-      setCourseForms((prev) => {
-        let next = prev.map((item) => {
-          const snap = snapshotByCourse.get(String(item.cursoId || '').trim());
-          const src = snap || draft;
-          const local = String(src.local || '').trim();
-          const data = String(src.data || '').trim();
-          const duracao = String(src.duracao || '').trim();
-          const horarioInicio = String(src.horarioInicio || '').trim();
-          const periodoInicio = String(src.periodoInicio || src.data || '').trim();
-          const periodoFim = String(src.periodoFim || src.data || '').trim();
-          const conteudoProgramatico = String(
-            src.conteudoProgramatico || resolveCourseProgramContent(item.cursoId, '')
-          ).trim();
-          const textoCertificado = String(src.textoCertificado || '').trim() || buildCertificatePreviewText({
-            nome: aluno?.nome,
-            cpf: aluno?.cpf,
-            nomeCurso: item.cursoNome,
-            duracao,
-            local,
-            periodoInicio: periodoInicio || data,
-            periodoFim: periodoFim || data,
-          });
-          return {
-            ...item,
-            local,
-            data,
-            duracao,
-            horarioInicio,
-            periodoInicio,
-            periodoFim,
-            textoCertificado,
-            conteudoProgramatico,
-            confirmed: false,
-            needsReconfirm: true,
-          };
-        });
-
-        // Se snapshot tiver cursos que ainda nao estao no modal, adiciona automaticamente
-        snapshotByCourse.forEach((snap, cursoId) => {
-          if (!cursoId || next.some((item) => String(item.cursoId) === cursoId)) return;
-          const course = (Array.isArray(courses) ? courses : []).find((item) => String(item.id) === cursoId);
-          const cursoNome = safeText(course?.nomeCurso || snap?.cursoNome, 'Curso');
-          const local = String(snap?.local || '').trim();
-          const data = String(snap?.data || '').trim();
-          const duracao = String(snap?.duracao || course?.duracao || '').trim();
-          const horarioInicio = String(snap?.horarioInicio || '').trim();
-          const periodoInicio = String(snap?.periodoInicio || snap?.data || '').trim();
-          const periodoFim = String(snap?.periodoFim || snap?.data || '').trim();
-          const conteudoProgramatico = String(
-            snap?.conteudoProgramatico || resolveCourseProgramContent(cursoId, '')
-          ).trim();
-          const textoCertificado = String(snap?.textoCertificado || '').trim() || buildCertificatePreviewText({
-            nome: aluno?.nome,
-            cpf: aluno?.cpf,
-            nomeCurso: cursoNome,
-            duracao,
-            local,
-            periodoInicio: periodoInicio || data,
-            periodoFim: periodoFim || data,
-          });
-          next.push({
-            cursoId,
-            cursoNome,
-            local,
-            data,
-            duracao,
-            horarioInicio,
-            periodoInicio,
-            periodoFim,
-            textoCertificado,
-            conteudoProgramatico,
-            locked: false,
-            confirmed: false,
-            needsReconfirm: true,
-          });
-        });
-
-        return next;
-      });
-      if (Array.isArray(draft.selectedCourseIds) && draft.selectedCourseIds.length > 0) {
-        setSelectedCourseIds(draft.selectedCourseIds.map((item) => String(item || '').trim()).filter(Boolean));
-      }
+      setCourseForms((prev) => prev.map((item) => {
+        if (item.cursoId !== current.cursoId) return item;
+        return {
+          ...item,
+          local: String(draft.local || '').trim(),
+          data: String(draft.data || '').trim(),
+          duracao: String(draft.duracao || '').trim(),
+          horarioInicio: String(draft.horarioInicio || '').trim(),
+          periodoInicio: String(draft.periodoInicio || draft.data || '').trim(),
+          periodoFim: String(draft.periodoFim || draft.data || '').trim(),
+          textoCertificado: String(draft.textoCertificado || '').trim(),
+          conteudoProgramatico: String(
+            draft.conteudoProgramatico || resolveCourseProgramContent(item.cursoId, '')
+          ).trim(),
+          confirmed: false,
+          needsReconfirm: true,
+        };
+      }));
       if (draft.signatureType === 'manual' || draft.signatureType === 'digital') {
         setSignatureType(draft.signatureType);
       }
@@ -882,7 +813,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       setInstrutorCargo(String(draft.instrutorCargo || '').trim());
       setInstrutorRegistro(String(draft.instrutorRegistro || '').trim());
       setConfirmChecklistDone(Boolean(draft.confirmChecklistDone));
-      setDraftStatus('Rascunho do servidor aplicado. Revise e confirme os dados deste curso.');
+      setDraftStatus('Rascunho aplicado para este curso. Revise e confirme.');
     } catch (error) {
       setDraftStatus(error?.message || 'Não foi possível carregar o rascunho do servidor.');
     } finally {
