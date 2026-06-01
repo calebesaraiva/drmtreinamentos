@@ -1146,7 +1146,10 @@ function normalizeCertificateContext(context = {}) {
   const data = String(context.data || '').trim();
   const duracao = String(context.duracao || '').trim();
   const horarioInicio = String(context.horarioInicio || '').trim();
+  const periodoInicio = String(context.periodoInicio || context.data || '').trim();
+  const periodoFim = String(context.periodoFim || context.data || '').trim();
   const textoCertificado = String(context.textoCertificado || '').trim();
+  const lockChecklist = context.lockChecklist !== false;
   const normalized = {
     temInstrutor,
     instrutor: temInstrutor ? instrutorNome : '',
@@ -1159,7 +1162,10 @@ function normalizeCertificateContext(context = {}) {
     data,
     duracao,
     horarioInicio,
+    periodoInicio,
+    periodoFim,
     textoCertificado,
+    lockChecklist,
   };
   return normalized;
 }
@@ -2776,9 +2782,30 @@ async function exportCertificates(payload) {
   const actorRole = payload.actorRole || 'responsavel';
   const now = new Date().toISOString();
 
+  for (const student of approvedForProcessing) {
+    const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
+    const effectiveCtx = byCourseCtx || (certificateContext ? normalizeCertificateContext(certificateContext) : null);
+    if (!effectiveCtx) continue;
+    const lockChecklist = effectiveCtx.lockChecklist !== false;
+    if (!lockChecklist && student.certificadoChecklistLocked) continue;
+    updatedById.set(String(student.id), {
+      ...student,
+      certificadoChecklistLocked: lockChecklist ? true : Boolean(student.certificadoChecklistLocked),
+      certificadoChecklistConfirmadoEm: lockChecklist ? now : (student.certificadoChecklistConfirmadoEm || now),
+      certificadoChecklistLocal: String(effectiveCtx.local || '').trim(),
+      certificadoChecklistData: String(effectiveCtx.data || '').trim(),
+      certificadoChecklistDuracao: String(effectiveCtx.duracao || '').trim(),
+      certificadoChecklistHorarioInicio: String(effectiveCtx.horarioInicio || '').trim(),
+      certificadoChecklistPeriodoInicio: String(effectiveCtx.periodoInicio || effectiveCtx.data || '').trim(),
+      certificadoChecklistPeriodoFim: String(effectiveCtx.periodoFim || effectiveCtx.data || '').trim(),
+      textoCertificado: String(effectiveCtx.textoCertificado || student.textoCertificado || '').trim(),
+      certificadoChecklistActor: actor,
+    });
+  }
+
   if (shouldEmail) {
     for (const student of approvedForProcessing) {
-      let updated = student;
+      let updated = updatedById.get(String(student.id)) || student;
       try {
         const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
         const effectiveCtx = byCourseCtx || certificateContext;
@@ -2797,8 +2824,8 @@ async function exportCertificates(payload) {
       }
       updatedById.set(String(student.id), updated);
     }
-    students = students.map(student => updatedById.get(String(student.id)) || student);
   }
+  students = students.map(student => updatedById.get(String(student.id)) || student);
 
   const affectedClassIds = [...new Set(approvedForProcessing.map(student => student.turmaId).filter(Boolean).map(String))];
   if (affectedClassIds.length) {

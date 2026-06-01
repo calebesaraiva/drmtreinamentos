@@ -116,6 +116,60 @@ function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
   );
 }
 
+function SelecionarCertificadoPdfModal({ isOpen, onClose, aluno, allStudents, onConfirm }) {
+  const options = (Array.isArray(allStudents) ? allStudents : [])
+    .filter((s) => s.cpf === aluno?.cpf && s.statusCertificado === 'aprovado');
+  const [selectedId, setSelectedId] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSelectedId(String(aluno?.id || options[0]?.id || ''));
+  }, [isOpen, aluno, allStudents]);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Selecionar certificado para PDF" size="md">
+      <div className="space-y-4">
+        <p className="text-sm text-gray-600">
+          Escolha qual certificado aprovado você quer baixar em PDF para <strong>{safeText(aluno?.nome)}</strong>.
+        </p>
+        <div className="max-h-72 overflow-y-auto border border-gray-200 rounded-lg">
+          {options.map((item) => (
+            <label key={`pdf-opt-${item.id}`} className="flex items-start gap-3 p-3 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50">
+              <input
+                type="radio"
+                name="pdf-cert-option"
+                checked={String(selectedId) === String(item.id)}
+                onChange={() => setSelectedId(String(item.id))}
+                className="mt-1"
+              />
+              <div>
+                <p className="text-sm font-semibold text-gray-800">{safeText(item.nomeCurso, 'Curso')}</p>
+                <p className="text-xs text-gray-500">
+                  Local: {safeText(item.local, 'A definir')} • Data: {safeText(item.data, 'A definir')} • Carga: {safeText(item.duracao, 'A definir')}
+                </p>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
+          <button
+            type="button"
+            onClick={() => {
+              const selected = options.find((s) => String(s.id) === String(selectedId));
+              if (selected) onConfirm(selected);
+            }}
+            disabled={!selectedId}
+            className="btn-primary text-sm disabled:opacity-60"
+          >
+            Continuar
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AutorizaCadastroModal({
   isOpen,
   onClose,
@@ -385,22 +439,23 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     setCourseForms(unique.map((item) => ({
       cursoId: String(item.cursoId || ''),
       cursoNome: safeText(item.nomeCurso),
-      local: String(item.local || '').trim(),
-      data: String(item.data || '').trim(),
-      duracao: String(item.duracao || '').trim(),
-      horarioInicio: String(item.horarioInicio || '').trim(),
-      periodoInicio: String(item.periodoInicio || item.data || '').trim(),
-      periodoFim: String(item.periodoFim || item.data || '').trim(),
+      local: String(item.certificadoChecklistLocal || item.local || '').trim(),
+      data: String(item.certificadoChecklistData || item.data || '').trim(),
+      duracao: String(item.certificadoChecklistDuracao || item.duracao || '').trim(),
+      horarioInicio: String(item.certificadoChecklistHorarioInicio || item.horarioInicio || '').trim(),
+      periodoInicio: String(item.certificadoChecklistPeriodoInicio || item.periodoInicio || item.data || '').trim(),
+      periodoFim: String(item.certificadoChecklistPeriodoFim || item.periodoFim || item.data || '').trim(),
       textoCertificado: buildCertificatePreviewText({
         nome: item.nome,
         cpf: item.cpf,
         nomeCurso: item.nomeCurso,
-        duracao: item.duracao,
-        local: item.local,
-        periodoInicio: item.periodoInicio || item.data,
-        periodoFim: item.periodoFim || item.data,
+        duracao: item.certificadoChecklistDuracao || item.duracao,
+        local: item.certificadoChecklistLocal || item.local,
+        periodoInicio: item.certificadoChecklistPeriodoInicio || item.periodoInicio || item.data,
+        periodoFim: item.certificadoChecklistPeriodoFim || item.periodoFim || item.data,
       }),
-      confirmed: false,
+      locked: Boolean(item.certificadoChecklistLocked),
+      confirmed: Boolean(item.certificadoChecklistLocked),
     })));
     setStepIndex(0);
     setCourseToAdd('');
@@ -431,6 +486,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
 
   const updateCurrentField = (field, value) => {
     if (!current) return;
+    if (current.locked) return;
     setCourseForms((prev) => prev.map((item) => (
       item.cursoId === current.cursoId
         ? { ...item, [field]: value, confirmed: false }
@@ -472,6 +528,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
             periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
           }),
+          locked: false,
           confirmed: false,
         },
       ]);
@@ -545,19 +602,19 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Local do curso *</label>
-                <input value={current.local} onChange={(e) => updateCurrentField('local', e.target.value)} className="input-field mt-1" />
+                <input value={current.local} onChange={(e) => updateCurrentField('local', e.target.value)} className="input-field mt-1" disabled={current.locked} />
               </div>
               <div>
                 <label className="text-sm font-semibold text-gray-700">Data do curso *</label>
-                <input type="date" value={current.data} onChange={(e) => updateCurrentField('data', e.target.value)} className="input-field mt-1" />
+                <input type="date" value={current.data} onChange={(e) => updateCurrentField('data', e.target.value)} className="input-field mt-1" disabled={current.locked} />
               </div>
               <div>
                 <label className="text-sm font-semibold text-gray-700">Carga horária *</label>
-                <input value={current.duracao} onChange={(e) => updateCurrentField('duracao', e.target.value)} className="input-field mt-1" />
+                <input value={current.duracao} onChange={(e) => updateCurrentField('duracao', e.target.value)} className="input-field mt-1" disabled={current.locked} />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Hora (opcional)</label>
-                <input value={current.horarioInicio} onChange={(e) => updateCurrentField('horarioInicio', e.target.value)} className="input-field mt-1" />
+                <input value={current.horarioInicio} onChange={(e) => updateCurrentField('horarioInicio', e.target.value)} className="input-field mt-1" disabled={current.locked} />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Texto do certificado *</label>
@@ -566,6 +623,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   onChange={(e) => updateCurrentField('textoCertificado', e.target.value)}
                   rows={5}
                   className="input-field mt-1 resize-y"
+                  disabled={current.locked}
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Você pode ajustar o texto quando a empresa pedir uma variação.
@@ -575,7 +633,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             <div className="flex items-center justify-between">
               <button type="button" onClick={() => setStepIndex(Math.max(0, stepIndex - 1))} className="btn-secondary text-xs" disabled={stepIndex === 0}>Curso anterior</button>
               <button type="button" onClick={confirmCurrent} className="btn-primary text-xs" disabled={!canAdvance || current.confirmed}>
-                {current.confirmed ? 'Curso confirmado' : 'Confirmar este curso'}
+                {current.locked ? 'Checklist travado' : current.confirmed ? 'Curso confirmado' : 'Confirmar este curso'}
               </button>
               <button type="button" onClick={() => setStepIndex(Math.min(activeForms.length - 1, stepIndex + 1))} className="btn-secondary text-xs" disabled={stepIndex >= activeForms.length - 1}>Próximo curso</button>
             </div>
@@ -644,6 +702,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   periodoInicio: String(item.periodoInicio || item.data || '').trim(),
                   periodoFim: String(item.periodoFim || item.data || '').trim(),
                   textoCertificado: String(item.textoCertificado || '').trim(),
+                  lockChecklist: true,
                   temInstrutor,
                   instrutorNome: instrutorNome.trim(),
                   instrutorCargo: instrutorCargo.trim(),
@@ -881,6 +940,7 @@ export default function AnalisePage() {
   const [autorizaCadastroAluno, setAutorizaCadastroAluno] = useState(null);
   const [autorizaCertificadoAluno, setAutorizaCertificadoAluno] = useState(null);
   const [downloadModalAluno, setDownloadModalAluno] = useState(null);
+  const [pdfSelectAluno, setPdfSelectAluno] = useState(null);
   const [downloadActionType, setDownloadActionType] = useState('pdf');
   const [quickEmissionConfig, setQuickEmissionConfig] = useState(() => {
     try {
@@ -978,8 +1038,7 @@ export default function AnalisePage() {
   };
 
   const handleDownloadPdf = async (aluno) => {
-    setDownloadActionType('pdf');
-    setDownloadModalAluno(aluno);
+    setPdfSelectAluno(aluno);
   };
 
   const handleDownloadZip = async (aluno) => {
@@ -1485,6 +1544,18 @@ export default function AnalisePage() {
         actionType={downloadActionType}
         allStudents={safeStudents}
         courses={courses}
+      />
+
+      <SelecionarCertificadoPdfModal
+        isOpen={!!pdfSelectAluno}
+        onClose={() => setPdfSelectAluno(null)}
+        aluno={pdfSelectAluno}
+        allStudents={safeStudents}
+        onConfirm={(selectedCourseStudent) => {
+          setPdfSelectAluno(null);
+          setDownloadActionType('pdf');
+          setDownloadModalAluno(selectedCourseStudent);
+        }}
       />
     </div>
   );
