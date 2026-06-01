@@ -120,6 +120,17 @@ export const api = {
   getStudents: () => request('/api/students'),
   getCourses: () => request('/api/courses'),
   getClasses: () => request('/api/classes'),
+  getCertificateDraft: (cursoId, cursoNome) => {
+    const qs = new URLSearchParams();
+    if (cursoId !== undefined && cursoId !== null && String(cursoId).trim()) qs.set('cursoId', String(cursoId).trim());
+    if (cursoNome !== undefined && cursoNome !== null && String(cursoNome).trim()) qs.set('cursoNome', String(cursoNome).trim());
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request(`/api/certificate-drafts${suffix}`);
+  },
+  saveCertificateDraft: (payload) => request('/api/certificate-drafts', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
   getCertificateSettings: () => request('/api/settings/certificate'),
   updateCertificateSettings: (payload) => request('/api/settings/certificate', {
     method: 'PATCH',
@@ -184,9 +195,9 @@ export const api = {
     method: 'PATCH',
     body: JSON.stringify({ ...payload, actor }),
   }),
-  updateStudentStatus: (studentId, field, value, motivo = null, actor = 'Responsável DRM', actorRole = 'responsavel') => request(`/api/students/${studentId}/status`, {
+  updateStudentStatus: (studentId, field, value, motivo = null, actor = 'Responsável DRM', actorRole = 'responsavel', extra = {}) => request(`/api/students/${studentId}/status`, {
     method: 'PATCH',
-    body: JSON.stringify({ field, value, motivo, actor, actorRole }),
+    body: JSON.stringify({ field, value, motivo, actor, actorRole, ...extra }),
   }),
   updateStudentProfile: (studentId, payload) => request(`/api/students/${studentId}`, {
     method: 'PATCH',

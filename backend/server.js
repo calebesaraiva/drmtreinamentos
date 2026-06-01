@@ -123,6 +123,7 @@ function fallbackData() {
       courses: [],
       classes: [],
       certificateSettings: {},
+      certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
       users: defaultUsers,
@@ -135,6 +136,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
       users: defaultUsers,
@@ -148,6 +150,7 @@ function fallbackData() {
       courses: Array.isArray(parsed.courses) ? parsed.courses : structuredClone(MOCK_COURSES),
       classes: Array.isArray(parsed.classes) ? parsed.classes : [],
       certificateSettings: parsed.certificateSettings && typeof parsed.certificateSettings === 'object' ? parsed.certificateSettings : {},
+      certificateDrafts: Array.isArray(parsed.certificateDrafts) ? parsed.certificateDrafts : [],
       companyChangeRequests: Array.isArray(parsed.companyChangeRequests) ? parsed.companyChangeRequests : [],
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
       users: Array.isArray(parsed.users) ? parsed.users : defaultUsers,
@@ -158,6 +161,7 @@ function fallbackData() {
       courses: structuredClone(MOCK_COURSES),
       classes: [],
       certificateSettings: {},
+      certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
       users: defaultUsers,
@@ -191,6 +195,7 @@ async function loadData() {
       certificateSettings: existing.rows[0].data.certificateSettings && typeof existing.rows[0].data.certificateSettings === 'object'
         ? existing.rows[0].data.certificateSettings
         : {},
+      certificateDrafts: Array.isArray(existing.rows[0].data.certificateDrafts) ? existing.rows[0].data.certificateDrafts : [],
       companyChangeRequests: Array.isArray(existing.rows[0].data.companyChangeRequests) ? existing.rows[0].data.companyChangeRequests : [],
       auditLogs: Array.isArray(existing.rows[0].data.auditLogs) ? existing.rows[0].data.auditLogs : [],
       users: mergeEnvUsers(storedUsers),
@@ -234,6 +239,7 @@ let students = initialData.students;
 let courses = initialData.courses;
 let classes = initialData.classes || [];
 let certificateSettings = normalizeCertificateSettings(initialData.certificateSettings || {});
+let certificateDrafts = Array.isArray(initialData.certificateDrafts) ? initialData.certificateDrafts : [];
 let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? initialData.companyChangeRequests : [];
 let auditLogs = Array.isArray(initialData.auditLogs) ? initialData.auditLogs : [];
 let users = mergeEnvUsers(initialData.users || []);
@@ -301,7 +307,7 @@ const catalogSync = ensureCatalogCourses(courses);
 courses = catalogSync.courses;
 
 function persistData() {
-  const payload = { students, courses, classes, certificateSettings, companyChangeRequests, auditLogs, users };
+  const payload = { students, courses, classes, certificateSettings, certificateDrafts, companyChangeRequests, auditLogs, users };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -1182,6 +1188,110 @@ function normalizeCertificateContext(context = {}) {
     lockChecklist,
   };
   return normalized;
+}
+
+function listCertificateDrafts(auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  if (!privilegedRoles.has(role)) return [];
+  return Array.isArray(certificateDrafts) ? certificateDrafts : [];
+}
+
+function getCertificateDraft(payload = {}, auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  if (!privilegedRoles.has(role)) return { status: 403, error: 'Sem permissão.' };
+
+  const courseId = String(payload.cursoId || '').trim();
+  const fallbackName = String(payload.cursoNome || '').trim();
+  const course = courses.find((item) => String(item.id) === courseId);
+  const courseName = String(course?.nomeCurso || fallbackName).trim();
+  const { key, norm } = normalizeCourseDraftKey(courseName);
+  const draft = (Array.isArray(certificateDrafts) ? certificateDrafts : []).find((item) => String(item.courseKey || '') === key) || null;
+  return { draft, scope: { courseId, courseName, key, norm } };
+}
+
+function upsertCertificateDraft(payload = {}, auth = {}) {
+  const role = String(auth.role || '').toLowerCase();
+  if (!privilegedRoles.has(role)) return { status: 403, error: 'Sem permissão.' };
+
+  const courseId = String(payload.cursoId || '').trim();
+  const fallbackName = String(payload.cursoNome || '').trim();
+  const course = courses.find((item) => String(item.id) === courseId);
+  const courseName = String(course?.nomeCurso || fallbackName).trim();
+  if (!courseName) return { status: 400, error: 'Curso não informado para o rascunho.' };
+
+  const { key, norm } = normalizeCourseDraftKey(courseName);
+  const now = new Date().toISOString();
+  const draftPayload = {
+    cursoId: courseId || '',
+    cursoNome: courseName,
+    selectedCourseIds: Array.isArray(payload.selectedCourseIds) ? payload.selectedCourseIds.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    signatureType: payload.signatureType === 'manual' ? 'manual' : 'digital',
+    saveAsDefault: Boolean(payload.saveAsDefault),
+    temInstrutor: !(payload.temInstrutor === false),
+    instrutorNome: String(payload.instrutorNome || '').trim(),
+    instrutorCargo: String(payload.instrutorCargo || '').trim(),
+    instrutorRegistro: String(payload.instrutorRegistro || '').trim(),
+    confirmChecklistDone: Boolean(payload.confirmChecklistDone),
+    local: String(payload.local || '').trim(),
+    data: String(payload.data || '').trim(),
+    duracao: String(payload.duracao || '').trim(),
+    horarioInicio: String(payload.horarioInicio || '').trim(),
+    periodoInicio: String(payload.periodoInicio || payload.data || '').trim(),
+    periodoFim: String(payload.periodoFim || payload.data || '').trim(),
+    textoCertificado: String(payload.textoCertificado || '').trim(),
+    conteudoProgramatico: String(payload.conteudoProgramatico || '').trim(),
+    courseFormsSnapshot: Array.isArray(payload.courseFormsSnapshot)
+      ? payload.courseFormsSnapshot.map((item) => ({
+          cursoId: String(item?.cursoId || '').trim(),
+          cursoNome: String(item?.cursoNome || '').trim(),
+          local: String(item?.local || '').trim(),
+          data: String(item?.data || '').trim(),
+          duracao: String(item?.duracao || '').trim(),
+          horarioInicio: String(item?.horarioInicio || '').trim(),
+          periodoInicio: String(item?.periodoInicio || item?.data || '').trim(),
+          periodoFim: String(item?.periodoFim || item?.data || '').trim(),
+          textoCertificado: String(item?.textoCertificado || '').trim(),
+          conteudoProgramatico: String(item?.conteudoProgramatico || '').trim(),
+        }))
+      : [],
+  };
+
+  const nextEntry = {
+    id: randomUUID(),
+    courseKey: key,
+    courseNorm: norm,
+    courseName,
+    payload: draftPayload,
+    updatedAt: now,
+    updatedBy: auth.name || auth.username || 'Responsável DRM',
+    updatedById: String(auth.sub || ''),
+  };
+
+  const current = Array.isArray(certificateDrafts) ? certificateDrafts : [];
+  const index = current.findIndex((item) => String(item.courseKey || '') === key);
+  if (index >= 0) {
+    certificateDrafts[index] = {
+      ...current[index],
+      ...nextEntry,
+      id: current[index].id || nextEntry.id,
+    };
+  } else {
+    certificateDrafts = [...current, nextEntry];
+  }
+  persistData();
+  return { draft: nextEntry };
+}
+
+function normalizeCourseDraftKey(courseName = '') {
+  const norm = detectCourseNorm(courseName);
+  if (norm) return { key: `norm:${norm}`, norm };
+  const normalized = String(courseName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return { key: `curso:${normalized || 'geral'}`, norm: '' };
 }
 
 function certificateFileName(student = {}) {
@@ -3210,6 +3320,29 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, getClasses());
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/certificate-drafts') {
+    const cursoId = url.searchParams.get('cursoId') || '';
+    const cursoNome = url.searchParams.get('cursoNome') || '';
+    const result = getCertificateDraft({ cursoId, cursoNome }, req.auth || {});
+    if (result.status) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === 'PUT' && url.pathname === '/api/certificate-drafts') {
+    const body = await readJson(req);
+    const result = upsertCertificateDraft(body, req.auth || {});
+    if (result.status) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
     return;
   }
 

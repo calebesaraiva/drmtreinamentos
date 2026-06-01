@@ -413,7 +413,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const [confirmChecklistDone, setConfirmChecklistDone] = useState(false);
   const [draftStatus, setDraftStatus] = useState('');
   const cacheKey = 'drmLastInstructor';
-  const checklistDraftCacheKey = 'drmChecklistDraftByCourse';
+  const [draftBusy, setDraftBusy] = useState(false);
   const resolveCourseProgramContent = (courseId, fallback = '') => {
     const course = (Array.isArray(courses) ? courses : []).find((item) => String(item?.id || '') === String(courseId || ''));
     if (typeof course?.conteudoProgramatico === 'string' && course.conteudoProgramatico.trim()) {
@@ -430,13 +430,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     }
     return String(fallback || '').trim();
   };
-
-  const normalizeCourseKey = (value) => String(value || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
 
   useEffect(() => {
     if (!isOpen || !aluno) return;
@@ -583,14 +576,13 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     setStepIndex(Math.max(0, activeForms.length));
   };
 
-  const saveDraftFromCurrent = () => {
+  const saveDraftFromCurrent = async () => {
     if (!current) return;
     if (!String(current.local || '').trim() || !String(current.data || '').trim() || !String(current.duracao || '').trim() || !String(current.textoCertificado || '').trim() || !String(current.conteudoProgramatico || '').trim()) {
       setDraftStatus('Preencha local, data, carga horária, texto e cronograma antes de salvar o rascunho.');
       return;
     }
     const courseIdKey = String(current.cursoId || '').trim();
-    const courseNameKey = normalizeCourseKey(current.cursoNome);
     const payload = {
       cursoId: courseIdKey,
       cursoNome: current.cursoNome,
@@ -626,62 +618,60 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       savedAt: new Date().toISOString(),
     };
     try {
-      const raw = localStorage.getItem(checklistDraftCacheKey);
-      const db = raw ? JSON.parse(raw) : {};
-      db[courseIdKey] = payload;
-      if (courseNameKey) db[`name:${courseNameKey}`] = payload;
-      localStorage.setItem(checklistDraftCacheKey, JSON.stringify(db));
+      setDraftBusy(true);
+      await api.saveCertificateDraft(payload);
       setDraftStatus(`Rascunho salvo para ${current.cursoNome}.`);
-    } catch {
-      setDraftStatus('Não foi possível salvar o rascunho neste navegador.');
+    } catch (error) {
+      setDraftStatus(error?.message || 'Não foi possível salvar o rascunho no servidor.');
+    } finally {
+      setDraftBusy(false);
     }
   };
 
-  const applyDraftToCurrent = () => {
+  const applyDraftToCurrent = async () => {
     if (!current) return;
-    const courseIdKey = String(current.cursoId || '').trim();
-    const courseNameKey = normalizeCourseKey(current.cursoNome);
-    let draft = null;
     try {
-      const raw = localStorage.getItem(checklistDraftCacheKey);
-      const db = raw ? JSON.parse(raw) : {};
-      draft = db[courseIdKey] || db[`name:${courseNameKey}`] || null;
-    } catch {
-      draft = null;
+      setDraftBusy(true);
+      const result = await api.getCertificateDraft(current.cursoId, current.cursoNome);
+      const draft = result?.draft?.payload || null;
+      if (!draft) {
+        setDraftStatus('Nenhum rascunho encontrado para este curso.');
+        return;
+      }
+      setCourseForms((prev) => prev.map((item) => {
+        if (item.cursoId !== current.cursoId) return item;
+        return {
+          ...item,
+          local: String(draft.local || '').trim(),
+          data: String(draft.data || '').trim(),
+          duracao: String(draft.duracao || '').trim(),
+          horarioInicio: String(draft.horarioInicio || '').trim(),
+          periodoInicio: String(draft.periodoInicio || draft.data || '').trim(),
+          periodoFim: String(draft.periodoFim || draft.data || '').trim(),
+          textoCertificado: String(draft.textoCertificado || '').trim(),
+          conteudoProgramatico: String(draft.conteudoProgramatico || '').trim(),
+          confirmed: false,
+          needsReconfirm: true,
+        };
+      }));
+      if (Array.isArray(draft.selectedCourseIds) && draft.selectedCourseIds.length > 0) {
+        setSelectedCourseIds(draft.selectedCourseIds.map((item) => String(item || '').trim()).filter(Boolean));
+      }
+      if (draft.signatureType === 'manual' || draft.signatureType === 'digital') {
+        setSignatureType(draft.signatureType);
+      }
+      setSaveAsDefault(Boolean(draft.saveAsDefault));
+      setTemInstrutor(!(draft.temInstrutor === false));
+      setInstrutorNome(String(draft.instrutorNome || '').trim());
+      setInstrutorCargo(String(draft.instrutorCargo || '').trim());
+      setInstrutorRegistro(String(draft.instrutorRegistro || '').trim());
+      setConfirmChecklistDone(Boolean(draft.confirmChecklistDone));
+      setDraftStatus('Rascunho do servidor aplicado. Revise e confirme os dados deste curso.');
+    } catch (error) {
+      setDraftStatus(error?.message || 'Não foi possível carregar o rascunho do servidor.');
+    } finally {
+      setDraftBusy(false);
     }
-    if (!draft) {
-      setDraftStatus('Nenhum rascunho encontrado para este curso.');
-      return;
-    }
-    setCourseForms((prev) => prev.map((item) => {
-      if (item.cursoId !== current.cursoId) return item;
-      return {
-        ...item,
-        local: String(draft.local || '').trim(),
-        data: String(draft.data || '').trim(),
-        duracao: String(draft.duracao || '').trim(),
-        horarioInicio: String(draft.horarioInicio || '').trim(),
-        periodoInicio: String(draft.periodoInicio || draft.data || '').trim(),
-        periodoFim: String(draft.periodoFim || draft.data || '').trim(),
-        textoCertificado: String(draft.textoCertificado || '').trim(),
-        conteudoProgramatico: String(draft.conteudoProgramatico || '').trim(),
-        confirmed: false,
-        needsReconfirm: true,
-      };
-    }));
-    if (Array.isArray(draft.selectedCourseIds) && draft.selectedCourseIds.length > 0) {
-      setSelectedCourseIds(draft.selectedCourseIds.map((item) => String(item || '').trim()).filter(Boolean));
-    }
-    if (draft.signatureType === 'manual' || draft.signatureType === 'digital') {
-      setSignatureType(draft.signatureType);
-    }
-    setSaveAsDefault(Boolean(draft.saveAsDefault));
-    setTemInstrutor(!(draft.temInstrutor === false));
-    setInstrutorNome(String(draft.instrutorNome || '').trim());
-    setInstrutorCargo(String(draft.instrutorCargo || '').trim());
-    setInstrutorRegistro(String(draft.instrutorRegistro || '').trim());
-    setConfirmChecklistDone(Boolean(draft.confirmChecklistDone));
-    setDraftStatus('Rascunho aplicado. Revise e confirme os dados deste curso.');
   };
 
   return (
@@ -807,11 +797,11 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
               <button type="button" onClick={() => setStepIndex(Math.min(activeForms.length - 1, stepIndex + 1))} className="btn-secondary text-xs" disabled={stepIndex >= activeForms.length - 1}>Próximo curso</button>
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-amber-100 pt-2">
-              <button type="button" onClick={saveDraftFromCurrent} className="btn-secondary text-xs" disabled={current.locked}>
-                Salvar rascunho
+              <button type="button" onClick={saveDraftFromCurrent} className="btn-secondary text-xs" disabled={current.locked || draftBusy}>
+                {draftBusy ? 'Salvando...' : 'Salvar rascunho no servidor'}
               </button>
-              <button type="button" onClick={applyDraftToCurrent} className="btn-secondary text-xs" disabled={current.locked}>
-                Usar rascunho deste curso
+              <button type="button" onClick={applyDraftToCurrent} className="btn-secondary text-xs" disabled={current.locked || draftBusy}>
+                {draftBusy ? 'Carregando...' : 'Usar rascunho deste curso'}
               </button>
               {draftStatus ? <span className="text-xs text-amber-800">{draftStatus}</span> : null}
             </div>
