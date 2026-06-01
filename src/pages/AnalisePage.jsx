@@ -216,6 +216,7 @@ function SelecionarCertificadoPdfModal({ isOpen, onClose, aluno, allStudents, on
 
 function CursosAlunoAcaoModal({ isOpen, onClose, group, onAbrirChecklist, onBaixarPdf }) {
   const items = Array.isArray(group?.students) ? group.students : [];
+  const normalizeCourseKey = (value) => String(value || '').trim().toLowerCase();
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Cursos do aluno" size="md">
       <div className="space-y-3">
@@ -226,13 +227,23 @@ function CursosAlunoAcaoModal({ isOpen, onClose, group, onAbrirChecklist, onBaix
         </div>
         <div className="max-h-80 overflow-y-auto space-y-2">
           {items.map((item) => (
+            (() => {
+              const itemCourseKey = normalizeCourseKey(item.nomeCurso || item.cursoNome);
+              const hasEmittedSiblingSameCourse = items.some((sibling) => {
+                if (String(sibling.id) === String(item.id)) return false;
+                const siblingCourseKey = normalizeCourseKey(sibling.nomeCurso || sibling.cursoNome);
+                if (!itemCourseKey || itemCourseKey !== siblingCourseKey) return false;
+                return sibling.statusCertificado === 'aprovado' || sibling.certificadoChecklistConfirmadoEm || sibling.certificadoEnviado;
+              });
+              const shouldDownloadOnly = item.statusCertificado === 'aprovado' || item.certificadoChecklistConfirmadoEm || hasEmittedSiblingSameCourse;
+              return (
             <div key={`curso-acao-${item.id}`} className="rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-800">{safeText(item.nomeCurso, 'Curso')}</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 Cadastro: {safeText(item.statusCadastro)} • Certificado: {safeText(item.statusCertificado)}
               </p>
               <div className="flex justify-end mt-2">
-                {(item.statusCertificado === 'aprovado' || item.certificadoChecklistConfirmadoEm) ? (
+                {shouldDownloadOnly ? (
                   <button type="button" className="btn-secondary text-xs" onClick={() => onBaixarPdf(item)}>
                     <Download className="w-3.5 h-3.5" />
                     Baixar PDF
@@ -244,6 +255,8 @@ function CursosAlunoAcaoModal({ isOpen, onClose, group, onAbrirChecklist, onBaix
                 )}
               </div>
             </div>
+              );
+            })()
           ))}
         </div>
       </div>
@@ -1851,6 +1864,14 @@ export default function AnalisePage() {
                     && aluno.cursosConcluidos.length > 0;
                   const isFullyApproved = aluno.statusCadastro === 'aprovado' && aluno.statusCertificado === 'aprovado';
                   const isLockedAfterEmission = Boolean(aluno.certificadoChecklistConfirmadoEm || aluno.certificadoEnviado);
+                  const currentCourseKey = String(aluno.nomeCurso || aluno.cursoNome || '').trim().toLowerCase();
+                  const hasEmittedSiblingSameCourse = visibleStudents.some((sibling) => {
+                    if (String(sibling.id) === String(aluno.id)) return false;
+                    const siblingCourseKey = String(sibling.nomeCurso || sibling.cursoNome || '').trim().toLowerCase();
+                    if (!currentCourseKey || currentCourseKey !== siblingCourseKey) return false;
+                    return sibling.statusCertificado === 'aprovado' || sibling.certificadoChecklistConfirmadoEm || sibling.certificadoEnviado;
+                  });
+                  const isDownloadOnlyCourse = isLockedAfterEmission || hasEmittedSiblingSameCourse || aluno.statusCertificado === 'aprovado';
                   return (
                     <div key={aluno.id} className="rounded-lg border border-gray-200 p-3">
                       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
@@ -1880,7 +1901,7 @@ export default function AnalisePage() {
                               Autorizar cadastro
                             </button>
                           )}
-                          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && !isLockedAfterEmission && (
+                          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && !isDownloadOnlyCourse && (
                             <button
                               onClick={() => {
                                 setCursoAcaoGroup(group);
@@ -1891,7 +1912,7 @@ export default function AnalisePage() {
                               Checklist e emitir
                             </button>
                           )}
-                          {(aluno.statusCertificado === 'aprovado' || isLockedAfterEmission) && (
+                          {isDownloadOnlyCourse && (
                             <>
                               <button onClick={() => handleDownloadPdf(aluno)} className="btn-secondary text-xs py-1.5 px-3">
                                 <Download className="w-3.5 h-3.5" />
