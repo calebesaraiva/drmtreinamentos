@@ -414,6 +414,22 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const [draftStatus, setDraftStatus] = useState('');
   const cacheKey = 'drmLastInstructor';
   const checklistDraftCacheKey = 'drmChecklistDraftByCourse';
+  const resolveCourseProgramContent = (courseId, fallback = '') => {
+    const course = (Array.isArray(courses) ? courses : []).find((item) => String(item?.id || '') === String(courseId || ''));
+    if (typeof course?.conteudoProgramatico === 'string' && course.conteudoProgramatico.trim()) {
+      return course.conteudoProgramatico.trim();
+    }
+    if (Array.isArray(course?.cronograma) && course.cronograma.length > 0) {
+      const lines = course.cronograma
+        .map((item, index) => {
+          const label = String(item?.titulo || item?.descricao || item?.nome || '').trim();
+          return label ? `${index + 1}. ${label}` : '';
+        })
+        .filter(Boolean);
+      return lines.join(';\n');
+    }
+    return String(fallback || '').trim();
+  };
 
   const normalizeCourseKey = (value) => String(value || '')
     .toLowerCase()
@@ -463,6 +479,10 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         periodoInicio: item.certificadoChecklistPeriodoInicio || item.periodoInicio || item.data,
         periodoFim: item.certificadoChecklistPeriodoFim || item.periodoFim || item.data,
       }),
+      conteudoProgramatico: String(
+        item.certificadoChecklistConteudoProgramatico
+          || resolveCourseProgramContent(item.cursoId, '')
+      ).trim(),
       locked: Boolean(item.certificadoChecklistLocked),
       confirmed: Boolean(item.certificadoChecklistLocked),
       needsReconfirm: false,
@@ -481,7 +501,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     && String(current.local).trim()
     && String(current.data).trim()
     && String(current.duracao).trim()
-    && String(current.textoCertificado || '').trim();
+    && String(current.textoCertificado || '').trim()
+    && String(current.conteudoProgramatico || '').trim();
   const canAdvance = Boolean(isCurrentValid);
   const allCoursesConfirmed = activeForms.length > 0 && activeForms.every((item) => item.confirmed);
   const instructorOk = !temInstrutor || (instrutorNome.trim() && instrutorCargo.trim() && instrutorRegistro.trim());
@@ -550,6 +571,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
             periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
           }),
+          conteudoProgramatico: resolveCourseProgramContent(selectedId, ''),
           locked: false,
           confirmed: false,
           needsReconfirm: false,
@@ -563,8 +585,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
 
   const saveDraftFromCurrent = () => {
     if (!current) return;
-    if (!String(current.local || '').trim() || !String(current.data || '').trim() || !String(current.duracao || '').trim() || !String(current.textoCertificado || '').trim()) {
-      setDraftStatus('Preencha local, data, carga horária e texto antes de salvar o rascunho.');
+    if (!String(current.local || '').trim() || !String(current.data || '').trim() || !String(current.duracao || '').trim() || !String(current.textoCertificado || '').trim() || !String(current.conteudoProgramatico || '').trim()) {
+      setDraftStatus('Preencha local, data, carga horária, texto e cronograma antes de salvar o rascunho.');
       return;
     }
     const courseIdKey = String(current.cursoId || '').trim();
@@ -587,6 +609,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       periodoInicio: String(current.periodoInicio || current.data || '').trim(),
       periodoFim: String(current.periodoFim || current.data || '').trim(),
       textoCertificado: String(current.textoCertificado || '').trim(),
+      conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       // Guarda o estado do checklist do modal para agilizar próximos alunos do mesmo curso
       courseFormsSnapshot: courseForms.map((item) => ({
         cursoId: String(item.cursoId || '').trim(),
@@ -598,6 +621,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         periodoInicio: String(item.periodoInicio || item.data || '').trim(),
         periodoFim: String(item.periodoFim || item.data || '').trim(),
         textoCertificado: String(item.textoCertificado || '').trim(),
+        conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
       })),
       savedAt: new Date().toISOString(),
     };
@@ -640,6 +664,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         periodoInicio: String(draft.periodoInicio || draft.data || '').trim(),
         periodoFim: String(draft.periodoFim || draft.data || '').trim(),
         textoCertificado: String(draft.textoCertificado || '').trim(),
+        conteudoProgramatico: String(draft.conteudoProgramatico || '').trim(),
         confirmed: false,
         needsReconfirm: true,
       };
@@ -760,6 +785,19 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   Você pode ajustar o texto quando a empresa pedir uma variação.
                 </p>
               </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-semibold text-gray-700">Cronograma / conteúdo programático *</label>
+                <textarea
+                  value={current.conteudoProgramatico || ''}
+                  onChange={(e) => updateCurrentField('conteudoProgramatico', e.target.value)}
+                  rows={6}
+                  className="input-field mt-1 resize-y"
+                  disabled={current.locked}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Este campo define a segunda página do certificado (conteúdo programático).
+                </p>
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <button type="button" onClick={() => setStepIndex(Math.max(0, stepIndex - 1))} className="btn-secondary text-xs" disabled={stepIndex === 0}>Curso anterior</button>
@@ -842,6 +880,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   periodoInicio: String(item.periodoInicio || item.data || '').trim(),
                   periodoFim: String(item.periodoFim || item.data || '').trim(),
                   textoCertificado: String(item.textoCertificado || '').trim(),
+                  conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
                   lockChecklist: true,
                   temInstrutor,
                   instrutorNome: instrutorNome.trim(),

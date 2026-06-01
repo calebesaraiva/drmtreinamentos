@@ -1161,6 +1161,7 @@ function normalizeCertificateContext(context = {}) {
   const periodoInicio = String(context.periodoInicio || context.data || '').trim();
   const periodoFim = String(context.periodoFim || context.data || '').trim();
   const textoCertificado = String(context.textoCertificado || '').trim();
+  const conteudoProgramatico = String(context.conteudoProgramatico || '').trim();
   const lockChecklist = context.lockChecklist !== false;
   const normalized = {
     temInstrutor,
@@ -1177,6 +1178,7 @@ function normalizeCertificateContext(context = {}) {
     periodoInicio,
     periodoFim,
     textoCertificado,
+    conteudoProgramatico,
     lockChecklist,
   };
   return normalized;
@@ -1324,7 +1326,7 @@ function certificatePdfValues(config = {}, student = {}) {
     marcaCentral: cfg.assinaturaEmpresaTexto,
     conteudoTitulo: cfg.conteudoTitulo,
     conteudoSubtitulo: renderCertificateTemplate(cfg.conteudoSubtitulo, templateValues),
-    conteudoProgramatico: cfg.conteudoProgramatico || defaultTopics,
+    conteudoProgramatico: String(data.conteudoProgramatico || '').trim() || cfg.conteudoProgramatico || defaultTopics,
     rodape: cfg.textoRodape,
   };
 }
@@ -1431,6 +1433,10 @@ function drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale) {
 
   if (field.kind === 'digitalSignature') {
     const signatureType = cfg.assinaturaTipo === 'manual' ? 'manual' : 'digital';
+    if (signatureType === 'manual') {
+      doc.roundedRect(rect.x, rect.y, rect.w, rect.h, 4).lineWidth(0.9).stroke(primary);
+      return;
+    }
     const signature = configuredImageSource(cfg.assinaturaDigitalUrl);
     if (signature) {
       doc.image(signature, rect.x, rect.y, { fit: [rect.w, rect.h], align: 'center', valign: 'center' });
@@ -2829,6 +2835,8 @@ async function exportCertificates(payload) {
       certificadoChecklistPeriodoInicio: String(effectiveCtx.periodoInicio || effectiveCtx.data || '').trim(),
       certificadoChecklistPeriodoFim: String(effectiveCtx.periodoFim || effectiveCtx.data || '').trim(),
       textoCertificado: String(effectiveCtx.textoCertificado || student.textoCertificado || '').trim(),
+      certificadoChecklistConteudoProgramatico: String(effectiveCtx.conteudoProgramatico || student.certificadoChecklistConteudoProgramatico || '').trim(),
+      conteudoProgramatico: String(effectiveCtx.conteudoProgramatico || student.conteudoProgramatico || '').trim(),
       certificadoChecklistActor: actor,
     });
   }
