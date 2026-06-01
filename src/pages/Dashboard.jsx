@@ -230,7 +230,7 @@ export default function Dashboard() {
   const [quickCourseManagerForm, setQuickCourseManagerForm] = useState({
     nomeCurso: '',
     descricao: '',
-    empresaContratante: '',
+    empresaContratante: 'A definir',
     local: '',
     duracao: '',
     horarioInicio: '',
@@ -240,7 +240,7 @@ export default function Dashboard() {
   const [quickCourseManagerNewForm, setQuickCourseManagerNewForm] = useState({
     nomeCurso: '',
     descricao: '',
-    empresaContratante: '',
+    empresaContratante: 'A definir',
     local: '',
     data: '',
     horarioInicio: '08:00',
@@ -468,7 +468,7 @@ export default function Dashboard() {
       setQuickCourseManagerForm({
         nomeCurso: '',
         descricao: '',
-        empresaContratante: '',
+        empresaContratante: 'A definir',
         local: '',
         duracao: '',
         horarioInicio: '',
@@ -478,7 +478,7 @@ export default function Dashboard() {
       setQuickCourseManagerNewForm({
         nomeCurso: '',
         descricao: '',
-        empresaContratante: '',
+        empresaContratante: 'A definir',
         local: '',
         data: '',
         horarioInicio: '08:00',
@@ -494,7 +494,7 @@ export default function Dashboard() {
     setQuickCourseManagerForm({
       nomeCurso: course.nomeCurso || '',
       descricao: course.descricao || '',
-      empresaContratante: course.empresaContratante || '',
+      empresaContratante: course.empresaContratante || 'A definir',
       local: course.local || '',
       duracao: course.duracao || '',
       horarioInicio: course.horarioInicio || '',
@@ -507,7 +507,7 @@ export default function Dashboard() {
       setQuickStatus({ type: 'error', text: 'Selecione um curso para alterar.' });
       return;
     }
-    if (!quickCourseManagerForm.nomeCurso || !quickCourseManagerForm.empresaContratante || !quickCourseManagerForm.local || !quickCourseManagerForm.duracao || !quickCourseManagerForm.maxAlunos) {
+    if (!quickCourseManagerForm.nomeCurso || !quickCourseManagerForm.local || !quickCourseManagerForm.duracao || !quickCourseManagerForm.maxAlunos) {
       setQuickStatus({ type: 'error', text: 'Preencha os campos obrigatórios do curso antes de salvar.' });
       return;
     }
@@ -529,7 +529,7 @@ export default function Dashboard() {
     }
   };
   const handleCreateManagedCourse = async () => {
-    if (!quickCourseManagerNewForm.nomeCurso || !quickCourseManagerNewForm.empresaContratante || !quickCourseManagerNewForm.local || !quickCourseManagerNewForm.data || !quickCourseManagerNewForm.horarioInicio || !quickCourseManagerNewForm.duracao || !quickCourseManagerNewForm.maxAlunos) {
+    if (!quickCourseManagerNewForm.nomeCurso || !quickCourseManagerNewForm.local || !quickCourseManagerNewForm.data || !quickCourseManagerNewForm.horarioInicio || !quickCourseManagerNewForm.duracao || !quickCourseManagerNewForm.maxAlunos) {
       setQuickStatus({ type: 'error', text: 'Preencha os campos obrigatórios para cadastrar o curso.' });
       return;
     }
@@ -538,6 +538,7 @@ export default function Dashboard() {
     try {
       const created = await addCourse({
         ...quickCourseManagerNewForm,
+        empresaContratante: 'A definir',
         maxAlunos: Number(quickCourseManagerNewForm.maxAlunos || 1),
         temInstrutor: false,
         instrutorNome: '',
@@ -549,7 +550,7 @@ export default function Dashboard() {
       setQuickCourseManagerNewForm({
         nomeCurso: '',
         descricao: '',
-        empresaContratante: '',
+        empresaContratante: 'A definir',
         local: '',
         data: '',
         horarioInicio: '08:00',
@@ -1245,7 +1246,7 @@ export default function Dashboard() {
                     }`}
                   >
                     <p className="text-sm font-semibold text-gray-800">{item.nomeCurso}</p>
-                    <p className="text-xs text-gray-500">{item.empresaContratante || 'Empresa não informada'} • {item.local || 'Local não informado'}</p>
+                    <p className="text-xs text-gray-500">{item.local || 'Local não informado'}</p>
                   </button>
                 ))}
               </div>
@@ -1259,7 +1260,6 @@ export default function Dashboard() {
                 <>
                   <input className="input-field" placeholder="Nome do curso *" value={quickCourseManagerForm.nomeCurso} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, nomeCurso: e.target.value }))} />
                   <textarea className="input-field min-h-16" placeholder="Descrição" value={quickCourseManagerForm.descricao} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, descricao: e.target.value }))} />
-                  <input className="input-field" placeholder="Empresa contratante *" value={quickCourseManagerForm.empresaContratante} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, empresaContratante: e.target.value }))} />
                   <input className="input-field" placeholder="Local *" value={quickCourseManagerForm.local} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, local: e.target.value }))} />
                   <div className="grid grid-cols-2 gap-2">
                     <input className="input-field" placeholder="Duração *" value={quickCourseManagerForm.duracao} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, duracao: e.target.value }))} />
@@ -1284,7 +1284,6 @@ export default function Dashboard() {
             <p className="text-sm font-semibold text-blue-900">Cadastrar novo curso</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <input className="input-field" placeholder="Nome do curso *" value={quickCourseManagerNewForm.nomeCurso} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, nomeCurso: e.target.value }))} />
-              <input className="input-field" placeholder="Empresa contratante *" value={quickCourseManagerNewForm.empresaContratante} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, empresaContratante: e.target.value }))} />
               <input className="input-field sm:col-span-2" placeholder="Descrição" value={quickCourseManagerNewForm.descricao} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, descricao: e.target.value }))} />
               <input className="input-field" placeholder="Local *" value={quickCourseManagerNewForm.local} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, local: e.target.value }))} />
               <input className="input-field" type="date" value={quickCourseManagerNewForm.data} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, data: e.target.value }))} />
