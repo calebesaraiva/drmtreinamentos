@@ -456,6 +456,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       }),
       locked: Boolean(item.certificadoChecklistLocked),
       confirmed: Boolean(item.certificadoChecklistLocked),
+      needsReconfirm: false,
     })));
     setStepIndex(0);
     setCourseToAdd('');
@@ -489,7 +490,18 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     if (current.locked) return;
     setCourseForms((prev) => prev.map((item) => (
       item.cursoId === current.cursoId
-        ? { ...item, [field]: value, confirmed: false }
+        ? (() => {
+            const prevValue = String(item[field] ?? '');
+            const nextValue = String(value ?? '');
+            if (prevValue === nextValue) return item;
+            const wasConfirmed = item.confirmed === true;
+            return {
+              ...item,
+              [field]: value,
+              confirmed: false,
+              needsReconfirm: wasConfirmed ? true : item.needsReconfirm,
+            };
+          })()
         : item
     )));
   };
@@ -497,7 +509,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const confirmCurrent = () => {
     if (!current || !canAdvance) return;
     setCourseForms((prev) => prev.map((item) => (
-      item.cursoId === current.cursoId ? { ...item, confirmed: true } : item
+      item.cursoId === current.cursoId ? { ...item, confirmed: true, needsReconfirm: false } : item
     )));
     if (stepIndex < activeForms.length - 1) setStepIndex(stepIndex + 1);
   };
@@ -530,6 +542,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           }),
           locked: false,
           confirmed: false,
+          needsReconfirm: false,
         },
       ]);
     }
@@ -590,6 +603,11 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                 />
                 <span>{item.cursoNome}</span>
                 {item.confirmed && <span className="badge-green ml-auto">confirmado</span>}
+                {!item.confirmed && item.needsReconfirm && (
+                  <span className="ml-auto text-[11px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                    alterado, precisa reconfirmar
+                  </span>
+                )}
               </label>
             ))}
           </div>
@@ -599,6 +617,11 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             <p className="text-sm font-semibold text-amber-800">
               Checklist do curso {stepIndex + 1} de {activeForms.length}: {current.cursoNome}
             </p>
+            {!current.locked && !current.confirmed && current.needsReconfirm && (
+              <div className="rounded-md border border-amber-200 bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-800">
+                Texto/dados alterados. Reconfirme este curso para liberar a emissão.
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Local do curso *</label>
