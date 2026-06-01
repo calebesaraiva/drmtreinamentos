@@ -67,7 +67,7 @@ export function mergeCertificateLayout(layout = {}) {
 
   mergedFields.localCursoTopo = {
     ...defaultCertificateLayout.fields.localCursoTopo,
-    visible: layout.fields?.localCursoTopo?.visible ?? defaultCertificateLayout.fields.localCursoTopo.visible,
+    visible: false,
   };
 
   const highestFieldPage = Object.values(mergedFields).reduce(
@@ -81,6 +81,19 @@ export function mergeCertificateLayout(layout = {}) {
     pages: Math.max(defaultCertificateLayout.pages, Number(layout.pages) || 0, highestFieldPage),
     fields: mergedFields,
   };
+}
+
+function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
+  const city = String(cidade || '').trim();
+  const dateText = String(dataExtenso || '').trim();
+  const hourText = String(hora || '').trim();
+  if (!city && !dateText) return '';
+  if (!city) return `${dateText}${hourText}`;
+  if (!dateText) return `${city}${hourText}`;
+  const cityNorm = city.toLowerCase();
+  const dateNorm = dateText.toLowerCase();
+  if (cityNorm.includes(dateNorm)) return `${city}${hourText}`;
+  return `${city}, ${dateText}${hourText}`;
 }
 
 function formatDate(date) {
@@ -162,7 +175,11 @@ function certificateValues(config = {}, aluno = {}) {
     nrBadgeConteudo: renderTemplate(cfg.normaBadge, templateValues),
     titulo: cfg.tituloCertificado,
     textoCertificado: renderTemplate(cfg.textoCertificadoModelo, templateValues),
-    dataLocal: renderTemplate(cfg.detalhesCursoModelo, templateValues),
+    dataLocal: buildSafeDetailsLine({
+      cidade: templateValues.cidade,
+      dataExtenso: templateValues.dataExtenso,
+      hora: templateValues.hora,
+    }),
     assinaturaResponsavel: cfg.nomeResponsavel,
     assinaturaValidade: renderTemplate(cfg.assinaturaValidacaoModelo, templateValues),
     cargoResponsavel: cfg.cargoResponsavel,

@@ -1205,7 +1205,7 @@ function mergeCertificateLayoutPdf(layout = {}) {
 
   mergedFields.localCursoTopo = {
     ...defaultCertificateLayout.fields.localCursoTopo,
-    visible: layout.fields?.localCursoTopo?.visible ?? defaultCertificateLayout.fields.localCursoTopo.visible,
+    visible: false,
   };
 
   const highestFieldPage = Object.values(mergedFields).reduce(
@@ -1219,6 +1219,20 @@ function mergeCertificateLayoutPdf(layout = {}) {
     pages: Math.max(defaultCertificateLayout.pages, Number(layout.pages) || 0, highestFieldPage),
     fields: mergedFields,
   };
+}
+
+function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
+  const city = String(cidade || '').trim();
+  const dateText = String(dataExtenso || '').trim();
+  const hourText = String(hora || '').trim();
+  if (!city && !dateText) return '';
+  if (!city) return `${dateText}${hourText}`;
+  if (!dateText) return `${city}${hourText}`;
+  const cityNorm = city.toLowerCase();
+  const dateNorm = dateText.toLowerCase();
+  // Evita repetição quando a cidade/local já veio com data junto.
+  if (cityNorm.includes(dateNorm)) return `${city}${hourText}`;
+  return `${city}, ${dateText}${hourText}`;
 }
 
 function formatLongDateBR(date) {
@@ -1289,7 +1303,11 @@ function certificatePdfValues(config = {}, student = {}) {
     textoCertificado: data.textoCertificado
       ? String(data.textoCertificado).trim()
       : renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
-    dataLocal: renderCertificateTemplate(cfg.detalhesCursoModelo, templateValues),
+    dataLocal: buildSafeDetailsLine({
+      cidade: templateValues.cidade,
+      dataExtenso: templateValues.dataExtenso,
+      hora: templateValues.hora,
+    }),
     assinaturaResponsavel: cfg.nomeResponsavel,
     assinaturaValidade: manualSignature
       ? `Certificado assinado manualmente por ${templateValues.responsavel}.`
