@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   CheckCircle, XCircle, AlertCircle,
-  ChevronDown, ChevronUp, Loader2, RefreshCcw
+  ChevronDown, ChevronUp, Loader2, RefreshCcw, Download, Archive
 } from 'lucide-react';
 import Modal from '../components/Modal';
 import { useApp } from '../context/AppContext';
@@ -96,7 +96,534 @@ function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
   );
 }
 
-function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
+function AutorizaCadastroModal({
+  isOpen,
+  onClose,
+  onConfirm,
+  aluno,
+  courses,
+  loading,
+  rememberedFilial,
+}) {
+  const [filial, setFilial] = useState('');
+  const [selectedCourses, setSelectedCourses] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen || !aluno) return;
+    const currentCourseId = String(aluno.cursoId || '');
+    setFilial(String(aluno.filial || rememberedFilial || ''));
+    setSelectedCourses(currentCourseId ? [currentCourseId] : []);
+  }, [isOpen, aluno, rememberedFilial]);
+
+  const toggleCourse = (courseId) => {
+    const id = String(courseId || '');
+    setSelectedCourses((prev) => (
+      prev.includes(id)
+        ? prev.filter((item) => item !== id)
+        : [...prev, id]
+    ));
+  };
+
+  const canConfirm = filial.trim().length >= 2 && selectedCourses.length > 0;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Autorizar aluno com filial e cursos" size="md">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-green-50 border border-green-100 p-3">
+          <p className="text-sm text-green-800">
+            Defina a filial e marque os cursos concluídos por <strong>{safeText(aluno?.nome)}</strong>.
+            Cada curso aprovado gera certificado separado.
+          </p>
+        </div>
+        <div>
+          <label className="text-sm font-semibold text-gray-700">Filial da empresa *</label>
+          <input
+            type="text"
+            value={filial}
+            onChange={(e) => setFilial(e.target.value)}
+            placeholder="Ex: Mix Mateus JK, Loja 15, Armazém São Luís"
+            className="input-field mt-1"
+          />
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-2">Cursos concluídos *</p>
+          <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
+            {(Array.isArray(courses) ? courses : []).map((course) => {
+              const id = String(course.id || '');
+              const checked = selectedCourses.includes(id);
+              return (
+                <label key={`course-check-${id}`} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggleCourse(id)}
+                  />
+                  <span className="text-sm text-gray-800">{safeText(course.nomeCurso, 'Curso sem nome')}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
+          <button
+            type="button"
+            onClick={() => onConfirm({ filial: filial.trim(), cursosConcluidos: selectedCourses })}
+            disabled={!canConfirm || loading}
+            className="btn-success text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Confirmar autorização
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AutorizaCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading }) {
+  const [local, setLocal] = useState('');
+  const [data, setData] = useState('');
+  const [duracao, setDuracao] = useState('');
+  const [instrutorNome, setInstrutorNome] = useState('');
+  const [instrutorCargo, setInstrutorCargo] = useState('');
+  const [instrutorRegistro, setInstrutorRegistro] = useState('');
+  const [temInstrutor, setTemInstrutor] = useState(true);
+  const [cursoOk, setCursoOk] = useState(false);
+  const INSTRUTOR_CACHE_KEY = 'drmLastInstructor';
+
+  useEffect(() => {
+    if (!isOpen || !aluno) return;
+    let cached = {};
+    try {
+      cached = JSON.parse(localStorage.getItem(INSTRUTOR_CACHE_KEY) || '{}');
+    } catch {
+      cached = {};
+    }
+    setLocal(String(aluno.local || '').trim());
+    setData(String(aluno.data || '').trim());
+    setDuracao(String(aluno.duracao || '').trim());
+    const hasInstructor = aluno.temInstrutor !== false;
+    setTemInstrutor(hasInstructor);
+    setInstrutorNome(String(aluno.instrutorNome || aluno.instrutor || cached.nome || '').trim());
+    setInstrutorCargo(String(aluno.instrutorCargo || aluno.cargoInstrutor || cached.cargo || '').trim());
+    setInstrutorRegistro(String(aluno.instrutorRegistro || aluno.registroInstrutor || cached.registro || '').trim());
+    setCursoOk(false);
+  }, [isOpen, aluno]);
+
+  const canConfirm = cursoOk && local.trim() && data.trim() && duracao.trim()
+    && (!temInstrutor || (instrutorNome.trim() && instrutorCargo.trim() && instrutorRegistro.trim()));
+  const pendencias = [
+    !cursoOk ? 'Confirmar o curso selecionado' : null,
+    !local.trim() ? 'Local do curso' : null,
+    !data.trim() ? 'Data do curso' : null,
+    !duracao.trim() ? 'Carga horária' : null,
+    temInstrutor && !instrutorNome.trim() ? 'Nome do instrutor' : null,
+    temInstrutor && !instrutorCargo.trim() ? 'Função do instrutor' : null,
+    temInstrutor && !instrutorRegistro.trim() ? 'Registro CREA/CFT do instrutor' : null,
+  ].filter(Boolean);
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Confirmar dados para autorizar certificado" size="md">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800">
+          Revise os dados. O certificado será assinado com essas informações.
+        </div>
+        <div className="rounded-lg border border-gray-200 p-3 text-sm">
+          <p><strong>Aluno:</strong> {safeText(aluno?.nome)}</p>
+          <p><strong>Curso:</strong> {safeText(aluno?.nomeCurso)}</p>
+        </div>
+        {pendencias.length > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-xs font-semibold text-red-700 uppercase">Faltando para liberar validação</p>
+            <ul className="mt-1 space-y-1">
+              {pendencias.map((item) => (
+                <li key={item} className="text-sm text-red-700">• {item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <label className="flex items-start gap-2 text-sm text-gray-700">
+          <input type="checkbox" checked={cursoOk} onChange={(e) => setCursoOk(e.target.checked)} className="mt-1" />
+          Confirmo que o curso acima está correto para este certificado.
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <label className="text-sm font-semibold text-gray-700">Local *</label>
+            <input value={local} onChange={(e) => setLocal(e.target.value)} className="input-field mt-1" placeholder="Ex: Unidade da empresa" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Data do curso *</label>
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Carga horária *</label>
+            <input value={duracao} onChange={(e) => setDuracao(e.target.value)} className="input-field mt-1" placeholder="Ex: 8 horas" />
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-sm font-semibold text-gray-700 mb-1">Tem instrutor no certificado? *</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setTemInstrutor(true)} className={temInstrutor ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Sim</button>
+              <button type="button" onClick={() => setTemInstrutor(false)} className={!temInstrutor ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Não (usar só responsável)</button>
+            </div>
+          </div>
+          {temInstrutor && (
+          <>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-semibold text-gray-700">Instrutor responsável *</label>
+            <input value={instrutorNome} onChange={(e) => setInstrutorNome(e.target.value)} className="input-field mt-1" placeholder="Nome completo do instrutor" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Função do instrutor *</label>
+            <input value={instrutorCargo} onChange={(e) => setInstrutorCargo(e.target.value)} className="input-field mt-1" placeholder="Ex: Técnico em Segurança do Trabalho" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Registro CREA/CFT *</label>
+            <input value={instrutorRegistro} onChange={(e) => setInstrutorRegistro(e.target.value)} className="input-field mt-1" placeholder="Ex: CREA/CFT 0000000000" />
+          </div>
+          </>
+          )}
+        </div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
+          <button
+            type="button"
+            onClick={() => {
+              const payload = {
+                local: local.trim(),
+                data: data.trim(),
+                duracao: duracao.trim(),
+                cursoId: String(aluno?.cursoId || ''),
+                cursoNome: safeText(aluno?.nomeCurso),
+                temInstrutor,
+                instrutorNome: instrutorNome.trim(),
+                instrutorCargo: instrutorCargo.trim(),
+                instrutorRegistro: instrutorRegistro.trim(),
+              };
+              if (temInstrutor) {
+                try {
+                  localStorage.setItem(INSTRUTOR_CACHE_KEY, JSON.stringify({
+                    nome: payload.instrutorNome,
+                    cargo: payload.instrutorCargo,
+                    registro: payload.instrutorRegistro,
+                  }));
+                } catch {
+                  // noop
+                }
+              }
+              onConfirm(payload);
+            }}
+            disabled={!canConfirm || loading}
+            className="btn-success text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Confirmar e autorizar
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, actionType, allStudents, courses }) {
+  const [temInstrutor, setTemInstrutor] = useState(true);
+  const [instrutorNome, setInstrutorNome] = useState('');
+  const [instrutorCargo, setInstrutorCargo] = useState('');
+  const [instrutorRegistro, setInstrutorRegistro] = useState('');
+  const [signatureType, setSignatureType] = useState('digital');
+  const [saveAsDefault, setSaveAsDefault] = useState(true);
+  const [selectedCourseIds, setSelectedCourseIds] = useState([]);
+  const [courseForms, setCourseForms] = useState([]);
+  const [stepIndex, setStepIndex] = useState(0);
+  const [courseToAdd, setCourseToAdd] = useState('');
+  const [confirmChecklistDone, setConfirmChecklistDone] = useState(false);
+  const cacheKey = 'drmLastInstructor';
+
+  useEffect(() => {
+    if (!isOpen || !aluno) return;
+    let cached = {};
+    try { cached = JSON.parse(localStorage.getItem(cacheKey) || '{}'); } catch { cached = {}; }
+    const hasInstructor = aluno.temInstrutor !== false;
+    setTemInstrutor(hasInstructor);
+    setInstrutorNome(String(aluno.instrutorNome || aluno.instrutor || cached.nome || '').trim());
+    setInstrutorCargo(String(aluno.instrutorCargo || cached.cargo || '').trim());
+    setInstrutorRegistro(String(aluno.instrutorRegistro || cached.registro || '').trim());
+    setSignatureType('manual');
+    setSaveAsDefault(true);
+    const source = actionType === 'zip'
+      ? (Array.isArray(allStudents) ? allStudents.filter((s) => s.cpf === aluno.cpf && s.statusCertificado === 'aprovado') : [aluno])
+      : [aluno];
+    const unique = [];
+    const seen = new Set();
+    source.forEach((item) => {
+      const id = String(item.cursoId || '');
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      unique.push(item);
+    });
+    setSelectedCourseIds(unique.map((item) => String(item.cursoId || '')));
+    setCourseForms(unique.map((item) => ({
+      cursoId: String(item.cursoId || ''),
+      cursoNome: safeText(item.nomeCurso),
+      local: String(item.local || '').trim(),
+      data: String(item.data || '').trim(),
+      duracao: String(item.duracao || '').trim(),
+      horarioInicio: String(item.horarioInicio || '').trim(),
+      confirmed: false,
+    })));
+    setStepIndex(0);
+    setCourseToAdd('');
+    setConfirmChecklistDone(false);
+  }, [isOpen, aluno, actionType, allStudents]);
+
+  const activeForms = courseForms.filter((item) => selectedCourseIds.includes(item.cursoId));
+  const current = activeForms[Math.min(stepIndex, Math.max(0, activeForms.length - 1))];
+  const confirmedCount = activeForms.filter((item) => item.confirmed).length;
+  const progressPercent = activeForms.length > 0 ? Math.round((confirmedCount / activeForms.length) * 100) : 0;
+  const isCurrentValid = current && String(current.local).trim() && String(current.data).trim() && String(current.duracao).trim();
+  const canAdvance = Boolean(isCurrentValid);
+  const allCoursesConfirmed = activeForms.length > 0 && activeForms.every((item) => item.confirmed);
+  const instructorOk = !temInstrutor || (instrutorNome.trim() && instrutorCargo.trim() && instrutorRegistro.trim());
+  const canConfirm = allCoursesConfirmed && instructorOk && confirmChecklistDone;
+  const missingItems = [
+    activeForms.length === 0 ? 'Selecione ao menos 1 curso para emissão.' : null,
+    !allCoursesConfirmed ? 'Confirme o checklist de todos os cursos selecionados.' : null,
+    temInstrutor && !instrutorNome.trim() ? 'Preencha o nome do instrutor.' : null,
+    temInstrutor && !instrutorCargo.trim() ? 'Preencha a função do instrutor.' : null,
+    temInstrutor && !instrutorRegistro.trim() ? 'Preencha o CREA/CFT do instrutor.' : null,
+    !confirmChecklistDone ? 'Marque a confirmação final do checklist.' : null,
+  ].filter(Boolean);
+
+  const updateCurrentField = (field, value) => {
+    if (!current) return;
+    setCourseForms((prev) => prev.map((item) => (
+      item.cursoId === current.cursoId && !item.confirmed
+        ? { ...item, [field]: value, confirmed: false }
+        : item
+    )));
+  };
+
+  const confirmCurrent = () => {
+    if (!current || !canAdvance) return;
+    setCourseForms((prev) => prev.map((item) => (
+      item.cursoId === current.cursoId ? { ...item, confirmed: true } : item
+    )));
+    if (stepIndex < activeForms.length - 1) setStepIndex(stepIndex + 1);
+  };
+
+  const addCourseToChecklist = () => {
+    const selectedId = String(courseToAdd || '').trim();
+    if (!selectedId) return;
+    const alreadyExists = courseForms.some((item) => item.cursoId === selectedId);
+    if (!alreadyExists) {
+      const course = (Array.isArray(courses) ? courses : []).find((item) => String(item.id) === selectedId);
+      setCourseForms((prev) => [
+        ...prev,
+        {
+          cursoId: selectedId,
+          cursoNome: safeText(course?.nomeCurso, 'Curso'),
+          local: String(aluno?.local || '').trim(),
+          data: String(aluno?.data || '').trim(),
+          duracao: String(course?.duracao || aluno?.duracao || '').trim(),
+          horarioInicio: String(course?.horarioInicio || aluno?.horarioInicio || '').trim(),
+          confirmed: false,
+        },
+      ]);
+    }
+    setSelectedCourseIds((prev) => (prev.includes(selectedId) ? prev : [...prev, selectedId]));
+    setCourseToAdd('');
+    setStepIndex(Math.max(0, activeForms.length));
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Confirmar emissão do certificado" size="md">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-blue-800">
+          Selecione/confirme cursos e preencha o checklist de cada curso (um por vez).
+        </div>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+          <p><strong>Aluno:</strong> {safeText(aluno?.nome)}</p>
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-2">Cursos para emissão</p>
+          <div className="mb-2 flex gap-2">
+            <select
+              value={courseToAdd}
+              onChange={(e) => setCourseToAdd(e.target.value)}
+              className="input-field text-sm"
+            >
+              <option value="">Selecionar curso para adicionar...</option>
+              {(Array.isArray(courses) ? courses : []).map((course) => (
+                <option key={`add-course-${course.id}`} value={String(course.id)}>
+                  {safeText(course.nomeCurso, 'Curso')}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={addCourseToChecklist} disabled={!courseToAdd} className="btn-secondary text-xs whitespace-nowrap disabled:opacity-60">
+              Adicionar curso
+            </button>
+          </div>
+          <div className="mb-2">
+            <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+              <span>Progresso do checklist</span>
+              <span>{confirmedCount}/{activeForms.length} confirmado(s)</span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-orange-500 transition-all duration-200" style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
+          <div className="max-h-28 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
+            {courseForms.map((item) => (
+              <label key={`emit-course-${item.cursoId}`} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={selectedCourseIds.includes(item.cursoId)}
+                  onChange={(e) => {
+                    if (item.confirmed) return;
+                    const checked = e.target.checked;
+                    setSelectedCourseIds((prev) => checked ? [...prev, item.cursoId] : prev.filter((id) => id !== item.cursoId));
+                  }}
+                  disabled={item.confirmed}
+                />
+                <span>{item.cursoNome}</span>
+                {item.confirmed && <span className="badge-green ml-auto">confirmado</span>}
+              </label>
+            ))}
+          </div>
+        </div>
+        {current && (
+          <div className="rounded-lg border border-amber-100 bg-amber-50 p-3 space-y-3">
+            <p className="text-sm font-semibold text-amber-800">
+              Checklist do curso {stepIndex + 1} de {activeForms.length}: {current.cursoNome}
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-sm font-semibold text-gray-700">Local do curso *</label>
+                <input value={current.local} onChange={(e) => updateCurrentField('local', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Data do curso *</label>
+                <input type="date" value={current.data} onChange={(e) => updateCurrentField('data', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Carga horária *</label>
+                <input value={current.duracao} onChange={(e) => updateCurrentField('duracao', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-semibold text-gray-700">Hora (opcional)</label>
+                <input value={current.horarioInicio} onChange={(e) => updateCurrentField('horarioInicio', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <button type="button" onClick={() => setStepIndex(Math.max(0, stepIndex - 1))} className="btn-secondary text-xs" disabled={stepIndex === 0}>Curso anterior</button>
+              <button type="button" onClick={confirmCurrent} className="btn-primary text-xs" disabled={!canAdvance || current.confirmed}>
+                {current.confirmed ? 'Curso confirmado' : 'Confirmar este curso'}
+              </button>
+              <button type="button" onClick={() => setStepIndex(Math.min(activeForms.length - 1, stepIndex + 1))} className="btn-secondary text-xs" disabled={stepIndex >= activeForms.length - 1}>Próximo curso</button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <p className="text-sm font-semibold text-gray-700 mb-1">Assinatura do certificado *</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSignatureType('digital')} className={signatureType === 'digital' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Com assinatura digital</button>
+              <button type="button" onClick={() => setSignatureType('manual')} className={signatureType === 'manual' ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Versão assinatura manual</button>
+            </div>
+          </div>
+          <div className="sm:col-span-2">
+            <p className="text-sm font-semibold text-gray-700 mb-1">Tem instrutor no certificado? *</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setTemInstrutor(true)} className={temInstrutor ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Sim</button>
+              <button type="button" onClick={() => setTemInstrutor(false)} className={!temInstrutor ? 'btn-primary text-sm' : 'btn-secondary text-sm'}>Não (só responsável)</button>
+            </div>
+          </div>
+          {temInstrutor && (
+            <>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-semibold text-gray-700">Instrutor responsável *</label>
+                <input value={instrutorNome} onChange={(e) => setInstrutorNome(e.target.value)} className="input-field mt-1" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700">Função *</label>
+                <input value={instrutorCargo} onChange={(e) => setInstrutorCargo(e.target.value)} className="input-field mt-1" />
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-gray-700">CREA/CFT *</label>
+                <input value={instrutorRegistro} onChange={(e) => setInstrutorRegistro(e.target.value)} className="input-field mt-1" />
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
+          <button
+            type="button"
+            disabled={!canConfirm || loading}
+            className="btn-success text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+            onClick={() => {
+              if (temInstrutor) {
+                try {
+                  localStorage.setItem(cacheKey, JSON.stringify({
+                    nome: instrutorNome.trim(),
+                    cargo: instrutorCargo.trim(),
+                    registro: instrutorRegistro.trim(),
+                  }));
+                } catch {}
+              }
+              const selectedAndConfirmed = activeForms.filter((item) => item.confirmed);
+              onConfirm({
+                signatureType,
+                saveAsDefault,
+                courseConfirmations: selectedAndConfirmed.map((item) => ({
+                  cursoId: item.cursoId,
+                  local: String(item.local || '').trim(),
+                  data: String(item.data || '').trim(),
+                  duracao: String(item.duracao || '').trim(),
+                  horarioInicio: String(item.horarioInicio || '').trim(),
+                  temInstrutor,
+                  instrutorNome: instrutorNome.trim(),
+                  instrutorCargo: instrutorCargo.trim(),
+                  instrutorRegistro: instrutorRegistro.trim(),
+                })),
+              });
+            }}
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+            Confirmar emissão
+          </button>
+        </div>
+        {!canConfirm && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+            <p className="text-xs font-semibold text-red-700 uppercase">Falta para liberar emissão</p>
+            <ul className="mt-1 space-y-1">
+              {missingItems.map((item) => (
+                <li key={item} className="text-sm text-red-700">• {item}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <label className="flex items-start gap-2 text-xs text-gray-700">
+          <input
+            type="checkbox"
+            checked={confirmChecklistDone}
+            onChange={(e) => setConfirmChecklistDone(e.target.checked)}
+            className="mt-0.5"
+          />
+          Confirmo que revisei o checklist completo do aluno e os dados obrigatórios de todos os cursos.
+        </label>
+        <label className="flex items-center gap-2 text-xs text-gray-600">
+          <input type="checkbox" checked={saveAsDefault} onChange={(e) => setSaveAsDefault(e.target.checked)} />
+          Usar estes dados nas próximas emissões (sem perguntar novamente)
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function AlunoCard({ aluno, onAprovar, onAprovarCadastro, onRecusar, onDownloadPdf, onDownloadZip, processing }) {
   const [expanded, setExpanded] = useState(false);
   const isProcessing = processing?.startsWith(`${aluno.id}:`);
   const isPresent = aluno.presente === true || Number(aluno.presenca || 0) >= 75;
@@ -106,6 +633,9 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
   const empresa = safeText(aluno.empresa);
   const presenca = Number(aluno.presenca || 0);
   const nota = Number(aluno.notaProva || 0);
+  const hasCadastroCompleto = String(aluno.filial || '').trim().length >= 2
+    && Array.isArray(aluno.cursosConcluidos)
+    && aluno.cursosConcluidos.length > 0;
 
   return (
     <div className="card hover:shadow-md transition-all duration-200">
@@ -155,6 +685,20 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
               <p className="text-xs text-red-600 mt-0.5">{aluno.motivoRecusa}</p>
             </div>
           )}
+          {(aluno.filial || (Array.isArray(aluno.cursosConcluidos) && aluno.cursosConcluidos.length > 0)) && (
+            <div className="bg-blue-50 border border-blue-100 rounded-lg p-3">
+              {aluno.filial && (
+                <p className="text-xs text-blue-700">
+                  <strong>Filial:</strong> {aluno.filial}
+                </p>
+              )}
+              {Array.isArray(aluno.cursosConcluidos) && aluno.cursosConcluidos.length > 0 && (
+                <p className="text-xs text-blue-700 mt-1">
+                  <strong>Cursos concluídos:</strong> {aluno.cursosConcluidos.join(', ')}
+                </p>
+              )}
+            </div>
+          )}
           {aluno.certificadoAutorizadoEm && (
             <div className="bg-green-50 border border-green-100 rounded-lg p-3">
               <p className="text-xs font-semibold text-green-700">Certificado autorizado</p>
@@ -180,7 +724,7 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
           {aluno.statusCadastro === 'pendente' && (
             <div className="flex gap-2">
               <button
-                onClick={() => onAprovar(aluno.id, 'statusCadastro')}
+                onClick={() => onAprovarCadastro(aluno)}
                 disabled={isProcessing}
                 className="btn-success text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -197,6 +741,15 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
               </button>
             </div>
           )}
+          {aluno.statusCadastro === 'aprovado' && (
+            <button
+              onClick={() => onAprovarCadastro(aluno)}
+              disabled={isProcessing}
+              className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              Definir filial/cursos
+            </button>
+          )}
         </div>
 
         {/* Certificado */}
@@ -205,10 +758,10 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
             <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Certificado</p>
             <StatusBadge status={aluno.statusCertificado} />
           </div>
-          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && (
+          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && (
             <div className="flex gap-2">
               <button
-                onClick={() => onAprovar(aluno.id, 'statusCertificado')}
+                onClick={() => onAprovar(aluno)}
                 disabled={isProcessing}
                 className="btn-success text-xs py-1.5 px-3 disabled:opacity-60 disabled:cursor-not-allowed"
               >
@@ -225,8 +778,23 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
               </button>
             </div>
           )}
+          {aluno.statusCertificado === 'aprovado' && (
+            <div className="flex gap-2">
+              <button onClick={() => onDownloadPdf(aluno)} className="btn-secondary text-xs py-1.5 px-3">
+                <Download className="w-3.5 h-3.5" />
+                PDF
+              </button>
+              <button onClick={() => onDownloadZip(aluno)} className="btn-secondary text-xs py-1.5 px-3">
+                <Archive className="w-3.5 h-3.5" />
+                ZIP (todos)
+              </button>
+            </div>
+          )}
           {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && !isPresent && (
             <span className="text-xs text-amber-600 italic">Aguardando presença na chamada</span>
+          )}
+          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && !hasCadastroCompleto && (
+            <span className="text-xs text-amber-600 italic">Defina filial e cursos para liberar certificado</span>
           )}
           {aluno.statusCertificado === 'pendente' && aluno.statusCadastro !== 'aprovado' && (
             <span className="text-xs text-gray-400 italic">Aguardando aprovação do cadastro</span>
@@ -238,7 +806,7 @@ function AlunoCard({ aluno, onAprovar, onRecusar, processing }) {
 }
 
 export default function AnalisePage() {
-  const { students, classes, updateStudentStatus, updateClassStudentsStatus, updateClassRequestStatus, refreshData, loadingData, apiError } = useApp();
+  const { user, students, classes, courses, updateStudentStatus, updateClassStudentsStatus, updateClassRequestStatus, refreshData, loadingData, apiError } = useApp();
   const [filter, setFilter] = useState('pendente');
   const [recusaModal, setRecusaModal] = useState(null); // { aluno, tipo }
   const [processing, setProcessing] = useState(null);
@@ -247,8 +815,55 @@ export default function AnalisePage() {
   const [companyRequestProcessing, setCompanyRequestProcessing] = useState('');
   const [companyRequestRecusa, setCompanyRequestRecusa] = useState(null);
   const [companyRequestMotivo, setCompanyRequestMotivo] = useState('');
+  const [autorizaCadastroAluno, setAutorizaCadastroAluno] = useState(null);
+  const [autorizaCertificadoAluno, setAutorizaCertificadoAluno] = useState(null);
+  const [downloadModalAluno, setDownloadModalAluno] = useState(null);
+  const [downloadActionType, setDownloadActionType] = useState('pdf');
+  const [quickEmissionConfig, setQuickEmissionConfig] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('drmQuickEmissionConfig') || 'null');
+    } catch {
+      return null;
+    }
+  });
+  const [filialByEmpresa, setFilialByEmpresa] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('drmFilialByEmpresa') || '{}');
+    } catch {
+      return {};
+    }
+  });
   const safeStudents = Array.isArray(students) ? students : [];
   const safeClasses = Array.isArray(classes) ? classes : [];
+  const groupedAll = Object.values(
+    safeStudents.reduce((acc, student) => {
+      const cpfKey = String(student.cpf || '').trim() || String(student.id);
+      if (!acc[cpfKey]) {
+        acc[cpfKey] = {
+          cpfKey,
+          nome: student.nome,
+          cpf: student.cpf,
+          empresa: student.empresa,
+          students: [],
+        };
+      }
+      acc[cpfKey].students.push(student);
+      return acc;
+    }, {}),
+  );
+  const uniqueCpfs = groupedAll.map((g) => g.cpfKey);
+  const groupMatchesFilter = (group, val) => {
+    const items = Array.isArray(group?.students) ? group.students : [];
+    const hasRecusado = items.some((s) => s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado');
+    const allCadastroAprovado = items.length > 0 && items.every((s) => s.statusCadastro === 'aprovado');
+    const allCertAprovado = items.length > 0 && items.every((s) => s.statusCertificado === 'aprovado');
+    const hasPendente = items.some((s) => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente');
+    if (val === 'todos') return true;
+    if (val === 'pendente') return hasPendente && !hasRecusado;
+    if (val === 'aprovado') return allCadastroAprovado && allCertAprovado;
+    return hasRecusado;
+  };
+  const uniqueCountByFilter = (val) => groupedAll.filter((group) => groupMatchesFilter(group, val)).length;
 
   useEffect(() => {
     let ignore = false;
@@ -264,18 +879,97 @@ export default function AnalisePage() {
     return () => { ignore = true; };
   }, [loadingData]);
 
-  const filtered = safeStudents.filter(s => {
-    if (filter === 'todos') return true;
-    if (filter === 'pendente') return s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente';
-    if (filter === 'aprovado') return s.statusCadastro === 'aprovado';
-    if (filter === 'recusado') return s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado';
-    return true;
-  });
+  const groupedFiltered = groupedAll.filter((group) => groupMatchesFilter(group, filter));
 
-  const handleAprovar = async (id, field) => {
-    setProcessing(`${id}:${field}`);
+  const downloadBlob = ({ blob, filename }) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename || 'certificado';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleAprovar = (aluno) => {
+    setAutorizaCertificadoAluno(aluno);
+  };
+
+  const handleConfirmAutorizaCertificado = async (confirmacao) => {
+    if (!autorizaCertificadoAluno?.id) return;
+    const id = autorizaCertificadoAluno.id;
+    setProcessing(`${id}:statusCertificado`);
     try {
-      await updateStudentStatus(id, field, 'aprovado');
+      await updateStudentStatus(id, 'statusCertificado', 'aprovado', null, {
+        certificadoConfirmacao: confirmacao,
+      });
+      setAutorizaCertificadoAluno(null);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleDownloadPdf = async (aluno) => {
+    setDownloadActionType('pdf');
+    setDownloadModalAluno(aluno);
+  };
+
+  const handleDownloadZip = async (aluno) => {
+    setDownloadActionType('zip');
+    setDownloadModalAluno(aluno);
+  };
+
+  const handleConfirmDownload = async ({ signatureType, courseConfirmations, saveAsDefault }) => {
+    if (!downloadModalAluno?.id) return;
+    const op = `${downloadModalAluno.id}:download:${downloadActionType}`;
+    setProcessing(op);
+    try {
+      const result = await api.exportCertificates({
+        studentIds: [String(downloadModalAluno.id)],
+        action: downloadActionType,
+        signatureType,
+        courseConfirmations,
+        actor: user?.name || 'Responsável DRM',
+        actorRole: user?.role || 'responsavel',
+      });
+      downloadBlob(result);
+      if (saveAsDefault) {
+        const nextConfig = { signatureType, courseConfirmations };
+        setQuickEmissionConfig(nextConfig);
+        try {
+          localStorage.setItem('drmQuickEmissionConfig', JSON.stringify(nextConfig));
+        } catch {
+          // noop
+        }
+      }
+      setDownloadModalAluno(null);
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const handleAprovarCadastro = (aluno) => {
+    setAutorizaCadastroAluno(aluno);
+  };
+
+  const handleConfirmAutorizaCadastro = async (payload) => {
+    if (!autorizaCadastroAluno?.id) return;
+    const id = autorizaCadastroAluno.id;
+    setProcessing(`${id}:statusCadastro`);
+    try {
+      await updateStudentStatus(id, 'statusCadastro', 'aprovado', null, payload);
+      const empresaKey = String(autorizaCadastroAluno?.empresa || '').trim().toLowerCase();
+      if (empresaKey && payload?.filial) {
+        const next = { ...filialByEmpresa, [empresaKey]: payload.filial };
+        setFilialByEmpresa(next);
+        try {
+          localStorage.setItem('drmFilialByEmpresa', JSON.stringify(next));
+        } catch {
+          // noop
+        }
+      }
+      setAutorizaCadastroAluno(null);
     } finally {
       setProcessing(null);
     }
@@ -511,6 +1205,28 @@ export default function AnalisePage() {
       )}
 
       {/* Filter tabs */}
+      {quickEmissionConfig && (
+        <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+          <p className="text-xs text-blue-700">
+            Emissão rápida ativa. Os próximos downloads usam dados salvos automaticamente.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setQuickEmissionConfig(null);
+              try {
+                localStorage.removeItem('drmQuickEmissionConfig');
+              } catch {
+                // noop
+              }
+            }}
+            className="btn-secondary text-xs py-1.5 px-3"
+          >
+            Limpar padrão de emissão
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
         {[
           { val: 'todos', label: 'Todos' },
@@ -531,14 +1247,14 @@ export default function AnalisePage() {
             <span className={`ml-1.5 text-xs px-1.5 py-0.5 rounded-full ${
               filter === val ? 'bg-blue-600 text-blue-100' : 'bg-gray-100 text-gray-500'
             }`}>
-              {val === 'todos' ? safeStudents.length :
-               val === 'pendente' ? safeStudents.filter(s => s.statusCadastro === 'pendente' || s.statusCertificado === 'pendente').length :
-               val === 'aprovado' ? safeStudents.filter(s => s.statusCadastro === 'aprovado').length :
-               safeStudents.filter(s => s.statusCadastro === 'recusado' || s.statusCertificado === 'recusado').length}
+              {uniqueCountByFilter(val)}
             </span>
           </button>
         ))}
       </div>
+      <p className="text-xs text-gray-500 -mt-1">
+        {uniqueCpfs.length} aluno(s) único(s) por CPF • {safeStudents.length} registro(s) aluno+curso
+      </p>
 
       {/* List */}
       {loadingData ? (
@@ -546,22 +1262,93 @@ export default function AnalisePage() {
           <Loader2 className="w-10 h-10 text-blue-500 animate-spin mb-3" />
           <p className="text-gray-500 font-medium">Carregando análise...</p>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : groupedFiltered.length === 0 ? (
         <div className="card flex flex-col items-center justify-center py-12">
           <CheckCircle className="w-12 h-12 text-green-300 mb-3" />
           <p className="text-gray-500 font-medium">Nenhum item para exibir</p>
           <p className="text-gray-400 text-sm">Mude o filtro ou aguarde novos cadastros</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {filtered.map(aluno => (
-            <AlunoCard
-              key={aluno.id}
-              aluno={aluno}
-              onAprovar={handleAprovar}
-              onRecusar={handleRecusar}
-              processing={processing}
-            />
+        <div className="space-y-4">
+          {groupedFiltered.map((group) => (
+            <div key={`group-${group.cpfKey}`} className="card">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <p className="font-black text-gray-900">{safeText(group.nome, 'Aluno')}</p>
+                  <p className="text-sm text-gray-600">{safeText(group.cpf)} • {safeText(group.empresa)}</p>
+                </div>
+                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
+                  {group.students.length} curso(s)
+                </span>
+              </div>
+              <div className="space-y-3">
+                {group.students.map((aluno) => {
+                  const isProcessing = processing?.startsWith(`${aluno.id}:`);
+                  const isPresent = aluno.presente === true || Number(aluno.presenca || 0) >= 75;
+                  const hasCadastroCompleto = String(aluno.filial || '').trim().length >= 2
+                    && Array.isArray(aluno.cursosConcluidos)
+                    && aluno.cursosConcluidos.length > 0;
+                  const isFullyApproved = aluno.statusCadastro === 'aprovado' && aluno.statusCertificado === 'aprovado';
+                  return (
+                    <div key={aluno.id} className="rounded-lg border border-gray-200 p-3">
+                      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-gray-800">{safeText(aluno.nomeCurso, 'Curso')}</p>
+                          <p className="text-xs text-gray-500">Cadastro: <StatusBadge status={aluno.statusCadastro} /> • Certificado: <StatusBadge status={aluno.statusCertificado} /></p>
+                          <p className="text-xs text-gray-600 mt-1">
+                            Local: <strong>{safeText(aluno.local, 'A definir')}</strong> • Data: <strong>{safeText(aluno.data, 'A definir')}</strong> • Carga horária: <strong>{safeText(aluno.duracao, 'A definir')}</strong>
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {aluno.statusCadastro === 'pendente' && (
+                            <button
+                              onClick={() => handleAprovarCadastro(aluno)}
+                              disabled={isProcessing}
+                              className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-60"
+                            >
+                              Autorizar cadastro
+                            </button>
+                          )}
+                          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && (
+                            <button
+                              onClick={() => handleAprovar(aluno)}
+                              disabled={isProcessing}
+                              className="btn-success text-xs py-1.5 px-3 disabled:opacity-60"
+                            >
+                              Autorizar certificado
+                            </button>
+                          )}
+                          {aluno.statusCertificado === 'aprovado' && (
+                            <>
+                              <button onClick={() => handleDownloadPdf(aluno)} className="btn-secondary text-xs py-1.5 px-3">
+                                <Download className="w-3.5 h-3.5" />
+                                PDF
+                              </button>
+                              <button onClick={() => handleDownloadZip(aluno)} className="btn-secondary text-xs py-1.5 px-3">
+                                <Archive className="w-3.5 h-3.5" />
+                                ZIP
+                              </button>
+                            </>
+                          )}
+                          {!isFullyApproved && (
+                            <button
+                              onClick={() => handleRecusar(aluno, aluno.statusCadastro === 'pendente' ? 'Cadastro' : 'Certificado')}
+                              disabled={isProcessing}
+                              className="btn-danger text-xs py-1.5 px-3 disabled:opacity-60"
+                            >
+                              Recusar
+                            </button>
+                          )}
+                          {isFullyApproved && (
+                            <span className="badge-green">Bloqueado após aprovação</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -601,6 +1388,35 @@ export default function AnalisePage() {
           </div>
         </div>
       </Modal>
+
+      <AutorizaCadastroModal
+        isOpen={!!autorizaCadastroAluno}
+        onClose={() => setAutorizaCadastroAluno(null)}
+        onConfirm={handleConfirmAutorizaCadastro}
+        aluno={autorizaCadastroAluno}
+        courses={courses}
+        loading={processing === `${autorizaCadastroAluno?.id}:statusCadastro`}
+        rememberedFilial={filialByEmpresa[String(autorizaCadastroAluno?.empresa || '').trim().toLowerCase()] || ''}
+      />
+
+      <AutorizaCertificadoModal
+        isOpen={!!autorizaCertificadoAluno}
+        onClose={() => setAutorizaCertificadoAluno(null)}
+        onConfirm={handleConfirmAutorizaCertificado}
+        aluno={autorizaCertificadoAluno}
+        loading={processing === `${autorizaCertificadoAluno?.id}:statusCertificado`}
+      />
+
+      <EmissaoCertificadoModal
+        isOpen={!!downloadModalAluno}
+        onClose={() => setDownloadModalAluno(null)}
+        onConfirm={handleConfirmDownload}
+        aluno={downloadModalAluno}
+        loading={processing === `${downloadModalAluno?.id}:download:${downloadActionType}`}
+        actionType={downloadActionType}
+        allStudents={safeStudents}
+        courses={courses}
+      />
     </div>
   );
 }
