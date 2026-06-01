@@ -1447,12 +1447,7 @@ function drawSpecialCertificateField(doc, id, field, cfg, values, rect, scale) {
   }
 
   if (field.kind === 'locationText') {
-    doc.rect(rect.x, rect.y, rect.w, rect.h).lineWidth(1.4).stroke(primary);
-    doc.font('Helvetica-Bold').fontSize(field.fontSize * scale).fillColor(primary).text(`LOCAL DO CURSO - ${values[id]}`, rect.x, rect.y + rect.h * 0.28, {
-      width: rect.w,
-      align: 'center',
-      characterSpacing: 0.25 * scale,
-    });
+    // Local já está no texto principal do certificado; removido do layout para visual mais limpo.
     return;
   }
 
