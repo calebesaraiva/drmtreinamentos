@@ -84,7 +84,12 @@ export function mergeCertificateLayout(layout = {}) {
 }
 
 function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
-  const city = String(cidade || '').trim();
+  const city = String(cidade || '')
+    .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/gi, '')
+    .replace(/\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*,\s*$/g, '')
+    .trim();
   const dateText = String(dataExtenso || '').trim();
   const hourText = String(hora || '').trim();
   if (!city && !dateText) return '';

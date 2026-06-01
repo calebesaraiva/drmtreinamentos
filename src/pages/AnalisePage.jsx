@@ -43,7 +43,7 @@ function formatDateBR(value) {
   return parsed.toLocaleDateString('pt-BR');
 }
 
-function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, periodoInicio, periodoFim }) {
+function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, periodoInicio, periodoFim, empresa }) {
   const normalizeDuracao = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -54,7 +54,12 @@ function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, per
     return raw;
   };
   const normalizeLocal = (value) => {
-    const raw = String(value || '').trim();
+    const raw = String(value || '')
+      .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/gi, '')
+      .replace(/\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .replace(/\s*,\s*$/g, '')
+      .trim();
     if (!raw) return '';
     if (/^a definir$/i.test(raw)) return '';
     if (/^local pendente$/i.test(raw)) return '';
@@ -66,7 +71,23 @@ function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, per
   const periodo = inicio && fim ? (inicio === fim ? inicio : `${inicio} a ${fim}`) : (fim || inicio || '');
   const cargaHoraria = normalizeDuracao(duracao) || '8 horas';
   const localCurso = normalizeLocal(local) || 'Unidade da empresa';
-  return `Certificamos que ${safeText(nome, 'ALUNO')}, portador(a) do CPF ${safeText(cpf, '000.000.000-00')}, concluiu com aproveitamento satisfatório o treinamento ${safeText(nomeCurso, 'CURSO')}, com carga horária de ${cargaHoraria}, realizado em ${localCurso}, no período de ${periodo || formatDateBR(new Date())}, em conformidade com os requisitos aplicáveis.`;
+  const courseTextRaw = safeText(nomeCurso, 'CURSO');
+  const isNr10 = /NR\s*-?\s*10\b/i.test(courseTextRaw);
+  const courseText = isNr10
+    ? 'NR10 (RECICLAGEM) - Segurança em Instalações e Serviços em Eletricidade'
+    : courseTextRaw;
+  const empresaLabel = String(empresa || '').trim();
+  const promotedBy = empresaLabel ? `, promovido pelo SESMT do ${empresaLabel}` : '';
+  return `Certificamos que ${safeText(nome, 'ALUNO')}, portador(a) do CPF ${safeText(cpf, '000.000.000-00')}, concluiu com aproveitamento satisfatório o treinamento ${courseText}, com carga horária de ${cargaHoraria}${promotedBy}, realizado em ${localCurso}, no período de ${periodo || formatDateBR(new Date())}, em conformidade com os requisitos aplicáveis.`;
+}
+
+function sanitizeCertificateNarrative(text = '') {
+  return String(text || '')
+    .replace(/carga hor[aá]ria de\s*carga hor[aá]ria/gi, 'carga horária')
+    .replace(/(\b\d{1,2}\/\d{1,2}\/\d{2,4}\b)\s*,\s*\1/gi, '$1')
+    .replace(/(\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b)\s*,\s*\1/gi, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
@@ -604,6 +625,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     local: form?.local,
     periodoInicio: form?.periodoInicio || form?.data,
     periodoFim: form?.periodoFim || form?.data,
+    empresa: aluno?.empresa,
   });
   const resolveCourseProgramContent = (courseId, fallback = '') => {
     const course = (Array.isArray(courses) ? courses : []).find((item) => String(item?.id || '') === String(courseId || ''));
@@ -662,6 +684,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         local: item.certificadoChecklistLocal || item.local,
         periodoInicio: item.certificadoChecklistPeriodoInicio || item.periodoInicio || item.data,
         periodoFim: item.certificadoChecklistPeriodoFim || item.periodoFim || item.data,
+        empresa: item.empresa,
       }),
       conteudoProgramatico: String(
         item.certificadoChecklistConteudoProgramatico
@@ -723,7 +746,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                         })
                       : item.textoCertificado
                   )
-                : (field === 'textoCertificado' ? value : item.textoCertificado),
+                : (field === 'textoCertificado' ? sanitizeCertificateNarrative(value) : item.textoCertificado),
               confirmed: false,
               needsReconfirm: wasConfirmed ? true : item.needsReconfirm,
             };
@@ -765,7 +788,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       horarioInicio: String(current.horarioInicio || '').trim(),
       periodoInicio: String(current.periodoInicio || current.data || '').trim(),
       periodoFim: String(current.periodoFim || current.data || '').trim(),
-      textoCertificado: String(current.textoCertificado || '').trim() || textoNormalizado,
+      textoCertificado: sanitizeCertificateNarrative(String(current.textoCertificado || '').trim() || textoNormalizado),
       conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       // Guarda o estado do checklist do modal para agilizar próximos alunos do mesmo curso
       courseFormsSnapshot: [{
@@ -777,7 +800,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         horarioInicio: String(current.horarioInicio || '').trim(),
         periodoInicio: String(current.periodoInicio || current.data || '').trim(),
         periodoFim: String(current.periodoFim || current.data || '').trim(),
-        textoCertificado: String(current.textoCertificado || '').trim() || textoNormalizado,
+        textoCertificado: sanitizeCertificateNarrative(String(current.textoCertificado || '').trim() || textoNormalizado),
         conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       }],
       savedAt: new Date().toISOString(),
@@ -810,7 +833,19 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         const duracao = String(draft.duracao || '').trim();
         const periodoInicio = String(draft.periodoInicio || draft.data || '').trim();
         const periodoFim = String(draft.periodoFim || draft.data || '').trim();
-        const textoDraft = String(draft.textoCertificado || '').trim();
+        const textoDraftRaw = String(draft.textoCertificado || '').trim();
+        const periodoTexto = (() => {
+          const ini = formatDateBR(periodoInicio || data);
+          const fim = formatDateBR(periodoFim || data);
+          if (ini && fim) return ini === fim ? ini : `${ini} a ${fim}`;
+          return fim || ini || formatDateBR(new Date());
+        })();
+        const textoDraft = textoDraftRaw
+          .replaceAll('{NOME}', safeText(aluno?.nome, 'ALUNO'))
+          .replaceAll('{CPF}', safeText(aluno?.cpf, '000.000.000-00'))
+          .replaceAll('{CARGA_HORARIA}', duracao || '8 horas')
+          .replaceAll('{LOCAL}', local || 'Unidade da empresa')
+          .replaceAll('{PERIODO}', periodoTexto);
         return {
           ...item,
           local,
@@ -819,7 +854,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           horarioInicio: String(draft.horarioInicio || '').trim(),
           periodoInicio,
           periodoFim,
-          textoCertificado: textoDraft || buildCertificatePreviewText({
+          textoCertificado: sanitizeCertificateNarrative(textoDraft || buildCertificatePreviewText({
             nome: aluno?.nome,
             cpf: aluno?.cpf,
             nomeCurso: item.cursoNome,
@@ -827,7 +862,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             local,
             periodoInicio: periodoInicio || data,
             periodoFim: periodoFim || data,
-          }),
+            empresa: aluno?.empresa,
+          })),
           conteudoProgramatico: String(
             draft.conteudoProgramatico || resolveCourseProgramContent(item.cursoId, '')
           ).trim(),
@@ -1017,7 +1053,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   horarioInicio: String(item.horarioInicio || '').trim(),
                   periodoInicio: String(item.periodoInicio || item.data || '').trim(),
                   periodoFim: String(item.periodoFim || item.data || '').trim(),
-                  textoCertificado: String(item.textoCertificado || '').trim(),
+                  textoCertificado: sanitizeCertificateNarrative(String(item.textoCertificado || '').trim()),
                   conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
                   lockChecklist: true,
                   temInstrutor,

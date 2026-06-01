@@ -1323,7 +1323,7 @@ function normalizeCertificateContext(context = {}) {
   const horarioInicio = String(context.horarioInicio || '').trim();
   const periodoInicio = String(context.periodoInicio || context.data || '').trim();
   const periodoFim = String(context.periodoFim || context.data || '').trim();
-  const textoCertificado = String(context.textoCertificado || '').trim();
+  const textoCertificado = sanitizeCertificateNarrative(String(context.textoCertificado || '').trim());
   const conteudoProgramatico = String(context.conteudoProgramatico || '').trim();
   const lockChecklist = context.lockChecklist !== false;
   const normalized = {
@@ -1363,7 +1363,44 @@ function getCertificateDraft(payload = {}, auth = {}) {
   const courseName = String(course?.nomeCurso || fallbackName).trim();
   const { key, norm } = normalizeCourseDraftKey(courseName);
   const draft = (Array.isArray(certificateDrafts) ? certificateDrafts : []).find((item) => String(item.courseKey || '') === key) || null;
-  return { draft, scope: { courseId, courseName, key, norm } };
+  if (draft) return { draft, scope: { courseId, courseName, key, norm } };
+  if (norm === 'NR10') {
+    const now = new Date().toISOString();
+    return {
+      draft: {
+        id: `default-${key}`,
+        courseKey: key,
+        courseNorm: norm,
+        courseName,
+        payload: {
+          cursoId: courseId || '',
+          cursoNome: courseName || 'NR10 - Segurança em Instalações e Serviços em Eletricidade',
+          selectedCourseIds: courseId ? [courseId] : [],
+          signatureType: 'manual',
+          saveAsDefault: true,
+          temInstrutor: false,
+          instrutorNome: '',
+          instrutorCargo: '',
+          instrutorRegistro: '',
+          confirmChecklistDone: false,
+          local: '',
+          data: '',
+          duracao: '8 horas',
+          horarioInicio: '',
+          periodoInicio: '',
+          periodoFim: '',
+          textoCertificado: 'Certificamos que {NOME}, portador(a) do CPF {CPF}, concluiu com aproveitamento satisfatório o treinamento NR10 (RECICLAGEM) - Segurança em Instalações e Serviços em Eletricidade, com carga horária de {CARGA_HORARIA}, promovido pelo SESMT do Grupo Mateus, realizado em {LOCAL}, no período de {PERIODO}, em conformidade com os requisitos aplicáveis.',
+          conteudoProgramatico: '',
+          courseFormsSnapshot: [],
+        },
+        updatedAt: now,
+        updatedBy: 'Sistema DRM',
+        updatedById: '',
+      },
+      scope: { courseId, courseName, key, norm },
+    };
+  }
+  return { draft: null, scope: { courseId, courseName, key, norm } };
 }
 
 function upsertCertificateDraft(payload = {}, auth = {}) {
@@ -1395,7 +1432,7 @@ function upsertCertificateDraft(payload = {}, auth = {}) {
     horarioInicio: String(payload.horarioInicio || '').trim(),
     periodoInicio: String(payload.periodoInicio || payload.data || '').trim(),
     periodoFim: String(payload.periodoFim || payload.data || '').trim(),
-    textoCertificado: String(payload.textoCertificado || '').trim(),
+    textoCertificado: sanitizeCertificateNarrative(String(payload.textoCertificado || '').trim()),
     conteudoProgramatico: String(payload.conteudoProgramatico || '').trim(),
     courseFormsSnapshot: Array.isArray(payload.courseFormsSnapshot)
       ? payload.courseFormsSnapshot.map((item) => ({
@@ -1407,7 +1444,7 @@ function upsertCertificateDraft(payload = {}, auth = {}) {
           horarioInicio: String(item?.horarioInicio || '').trim(),
           periodoInicio: String(item?.periodoInicio || item?.data || '').trim(),
           periodoFim: String(item?.periodoFim || item?.data || '').trim(),
-          textoCertificado: String(item?.textoCertificado || '').trim(),
+          textoCertificado: sanitizeCertificateNarrative(String(item?.textoCertificado || '').trim()),
           conteudoProgramatico: String(item?.conteudoProgramatico || '').trim(),
         }))
       : [],
@@ -1491,7 +1528,12 @@ function mergeCertificateLayoutPdf(layout = {}) {
 }
 
 function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
-  const city = String(cidade || '').trim();
+  const city = String(cidade || '')
+    .replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/gi, '')
+    .replace(/\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b/gi, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s*,\s*$/g, '')
+    .trim();
   const dateText = String(dataExtenso || '').trim();
   const hourText = String(hora || '').trim();
   if (!city && !dateText) return '';
@@ -1502,6 +1544,15 @@ function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
   // Evita repetição quando a cidade/local já veio com data junto.
   if (cityNorm.includes(dateNorm)) return `${city}${hourText}`;
   return `${city}, ${dateText}${hourText}`;
+}
+
+function sanitizeCertificateNarrative(text = '') {
+  return String(text || '')
+    .replace(/carga hor[aá]ria de\s*carga hor[aá]ria/gi, 'carga horária')
+    .replace(/(\b\d{1,2}\/\d{1,2}\/\d{2,4}\b)\s*,\s*\1/gi, '$1')
+    .replace(/(\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b)\s*,\s*\1/gi, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 function formatLongDateBR(date) {
@@ -1570,8 +1621,8 @@ function certificatePdfValues(config = {}, student = {}) {
     nrBadgeConteudo: renderCertificateTemplate(cfg.normaBadge, templateValues),
     titulo: cfg.tituloCertificado,
     textoCertificado: data.textoCertificado
-      ? String(data.textoCertificado).trim()
-      : renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
+      ? sanitizeCertificateNarrative(String(data.textoCertificado).trim())
+      : sanitizeCertificateNarrative(renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues)),
     dataLocal: buildSafeDetailsLine({
       cidade: templateValues.cidade,
       dataExtenso: templateValues.dataExtenso,
@@ -3191,7 +3242,7 @@ async function exportCertificates(payload) {
       certificadoChecklistHorarioInicio: String(effectiveCtx.horarioInicio || '').trim(),
       certificadoChecklistPeriodoInicio: String(effectiveCtx.periodoInicio || effectiveCtx.data || '').trim(),
       certificadoChecklistPeriodoFim: String(effectiveCtx.periodoFim || effectiveCtx.data || '').trim(),
-      textoCertificado: String(effectiveCtx.textoCertificado || student.textoCertificado || '').trim(),
+      textoCertificado: sanitizeCertificateNarrative(String(effectiveCtx.textoCertificado || student.textoCertificado || '').trim()),
       certificadoChecklistConteudoProgramatico: String(effectiveCtx.conteudoProgramatico || student.certificadoChecklistConteudoProgramatico || '').trim(),
       conteudoProgramatico: String(effectiveCtx.conteudoProgramatico || student.conteudoProgramatico || '').trim(),
       certificadoChecklistActor: actor,
