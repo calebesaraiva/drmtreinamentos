@@ -148,12 +148,20 @@ async function main() {
   const data = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
   const courses = Array.isArray(data.courses) ? data.courses : [];
 
-  const nrCourseByNumber = new Map();
-  courses.forEach((course) => {
-    const m = String(course.nomeCurso || '').match(/\bNR[-\s]?(\d{1,2})\b/i);
-    if (!m) return;
-    nrCourseByNumber.set(m[1], course);
-  });
+  const preferByCode = (code, fallbackNr) => (
+    courses.find((course) => String(course.codigoCatalogo || '').trim().toUpperCase() === code)
+    || courses.find((course) => {
+      const m = String(course.nomeCurso || '').match(/\bNR[-\s]?(\d{1,2})\b/i);
+      return m && String(Number(m[1])) === String(Number(fallbackNr));
+    })
+    || null
+  );
+  const nrCourseByNumber = new Map([
+    ['10', preferByCode('NR-10', '10')],
+    ['12', preferByCode('NR-12', '12')],
+    ['18', preferByCode('NR-18', '18')],
+    ['35', preferByCode('NR-35', '35')],
+  ]);
 
   const now = new Date().toISOString();
   const newStudents = [];

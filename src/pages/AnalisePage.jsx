@@ -945,26 +945,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 border border-amber-100 bg-amber-50 rounded-lg px-3 py-2">
-          <button
-            type="button"
-            onClick={saveDraftFromCurrent}
-            className="btn-secondary text-xs"
-            disabled={!current || current.locked || draftBusy}
-          >
-            {draftBusy ? 'Salvando...' : 'Salvar rascunho'}
-          </button>
-          <button
-            type="button"
-            onClick={applyDraftToCurrent}
-            className="btn-secondary text-xs"
-            disabled={!current || current.locked || draftBusy}
-          >
-            {draftBusy ? 'Carregando...' : 'Usar rascunho'}
-          </button>
-          {draftStatus ? <span className="text-xs text-amber-800">{draftStatus}</span> : null}
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <p className="text-sm font-semibold text-gray-700 mb-1">Assinatura do certificado *</p>

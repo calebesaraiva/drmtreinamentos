@@ -1328,7 +1328,7 @@ export default function Dashboard() {
         <div className="space-y-3">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Qual é o nome do curso? *</label>
-            <input className="input-field" value={quickCourseManagerNewForm.nomeCurso} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, nomeCurso: e.target.value }))} placeholder="Ex: NR-10 - Segurança em Instalações e Serviços em Eletricidade" />
+            <input className="input-field" value={quickCourseManagerNewForm.nomeCurso} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, nomeCurso: e.target.value }))} placeholder="Ex: NR10 - Segurança em Instalações e Serviços em Eletricidade" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Descrição do curso (opcional)</label>

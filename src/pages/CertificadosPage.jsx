@@ -37,23 +37,29 @@ function toWhatsAppLink(phone = '', message = '') {
 function PreviewModal({ aluno, courses, config, layout, isOpen, onClose }) {
   if (!aluno) return null;
   const course = courses.find(item => String(item.id) === String(aluno.cursoId));
+  const checklistData = aluno.certificadoChecklistData || aluno.data;
+  const checklistLocal = aluno.certificadoChecklistLocal || aluno.local;
+  const checklistDuracao = aluno.certificadoChecklistDuracao || aluno.duracao;
+  const checklistHorario = aluno.certificadoChecklistHorarioInicio || aluno.horarioInicio;
+  const checklistPeriodoInicio = aluno.certificadoChecklistPeriodoInicio || aluno.periodoInicio || checklistData;
+  const checklistPeriodoFim = aluno.certificadoChecklistPeriodoFim || aluno.periodoFim || checklistData;
   const temInstrutor = aluno.temInstrutor !== undefined
     ? aluno.temInstrutor !== false
     : course?.temInstrutor !== false;
   const certificateData = {
     ...aluno,
     nomeCurso: aluno.nomeCurso || course?.nomeCurso,
-    local: aluno.local || course?.local,
-    data: aluno.data || course?.data,
-    horarioInicio: aluno.horarioInicio || course?.horarioInicio,
-    duracao: aluno.duracao || course?.duracao,
+    local: checklistLocal || course?.local,
+    data: checklistData || course?.data,
+    horarioInicio: checklistHorario || course?.horarioInicio,
+    duracao: checklistDuracao || course?.duracao,
     temInstrutor,
     instrutor: temInstrutor ? aluno.instrutorNome || aluno.instrutor || course?.instrutorNome || course?.instrutor : '',
     instrutorNome: temInstrutor ? aluno.instrutorNome || aluno.instrutor || course?.instrutorNome || course?.instrutor : '',
     instrutorCargo: temInstrutor ? aluno.instrutorCargo || aluno.cargoInstrutor || course?.instrutorCargo || course?.cargoInstrutor || course?.instrutorFuncao : '',
     instrutorRegistro: temInstrutor ? aluno.instrutorRegistro || aluno.registroInstrutor || aluno.creaInstrutor || aluno.cftInstrutor || course?.instrutorRegistro || course?.registroInstrutor || course?.creaInstrutor || course?.cftInstrutor : '',
-    periodoInicio: aluno.periodoInicio || course?.data,
-    periodoFim: aluno.periodoFim || course?.data,
+    periodoInicio: checklistPeriodoInicio || course?.data,
+    periodoFim: checklistPeriodoFim || course?.data,
   };
 
   return (

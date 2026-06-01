@@ -391,29 +391,40 @@ function SpecialField({ id, field, cfg, values, scale }) {
 
   if (field.kind === 'digitalSignature') {
     const signatureSrc = cfg.assinaturaDigitalUrl;
+    const isManualSignature = String(cfg.assinaturaTipo || '').toLowerCase() === 'manual';
 
     return (
       <div className="w-full h-full flex items-center justify-center">
-        <LogoImage
-          src={signatureSrc}
-          alt="Assinatura digital DRM"
-          className="w-full h-full object-contain"
-          fallback={(
-            <div
-              className="w-full h-full flex flex-col items-center justify-center rounded-md border border-dashed"
-              style={{
-                borderColor: hexToRgba(cfg.corPrimaria, 0.35),
-                color: cfg.corPrimaria,
-                background: hexToRgba(cfg.corPrimaria, 0.04),
-              }}
-            >
-              <span className="font-black" style={{ fontSize: `${field.fontSize * scale}px` }}>DRM</span>
-              <span className="font-bold" style={{ fontSize: `${Math.max(8, field.fontSize * 0.55) * scale}px` }}>
-                assinatura digital
-              </span>
-            </div>
-          )}
-        />
+        {isManualSignature ? (
+          <div
+            className="w-full h-full rounded-md border"
+            style={{
+              borderColor: hexToRgba(cfg.corPrimaria, 0.6),
+              background: 'transparent',
+            }}
+          />
+        ) : (
+          <LogoImage
+            src={signatureSrc}
+            alt="Assinatura digital DRM"
+            className="w-full h-full object-contain"
+            fallback={(
+              <div
+                className="w-full h-full flex flex-col items-center justify-center rounded-md border border-dashed"
+                style={{
+                  borderColor: hexToRgba(cfg.corPrimaria, 0.35),
+                  color: cfg.corPrimaria,
+                  background: hexToRgba(cfg.corPrimaria, 0.04),
+                }}
+              >
+                <span className="font-black" style={{ fontSize: `${field.fontSize * scale}px` }}>DRM</span>
+                <span className="font-bold" style={{ fontSize: `${Math.max(8, field.fontSize * 0.55) * scale}px` }}>
+                  assinatura digital
+                </span>
+              </div>
+            )}
+          />
+        )}
       </div>
     );
   }
