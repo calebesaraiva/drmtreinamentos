@@ -592,7 +592,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const [selectedCourseIds, setSelectedCourseIds] = useState([]);
   const [courseForms, setCourseForms] = useState([]);
   const [stepIndex, setStepIndex] = useState(0);
-  const [courseToAdd, setCourseToAdd] = useState('');
   const [confirmChecklistDone, setConfirmChecklistDone] = useState(false);
   const [draftStatus, setDraftStatus] = useState('');
   const cacheKey = 'drmLastInstructor';
@@ -673,7 +672,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       needsReconfirm: false,
     })));
     setStepIndex(0);
-    setCourseToAdd('');
     setConfirmChecklistDone(false);
     setDraftStatus('');
   }, [isOpen, aluno, actionType, allStudents]);
@@ -725,7 +723,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                         })
                       : item.textoCertificado
                   )
-                : item.textoCertificado,
+                : (field === 'textoCertificado' ? value : item.textoCertificado),
               confirmed: false,
               needsReconfirm: wasConfirmed ? true : item.needsReconfirm,
             };
@@ -740,44 +738,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       item.cursoId === current.cursoId ? { ...item, confirmed: true, needsReconfirm: false } : item
     )));
     if (stepIndex < activeForms.length - 1) setStepIndex(stepIndex + 1);
-  };
-
-  const addCourseToChecklist = () => {
-    const selectedId = String(courseToAdd || '').trim();
-    if (!selectedId) return;
-    const alreadyExists = courseForms.some((item) => item.cursoId === selectedId);
-    if (!alreadyExists) {
-      const course = (Array.isArray(courses) ? courses : []).find((item) => String(item.id) === selectedId);
-          setCourseForms((prev) => [
-        ...prev,
-        {
-          cursoId: selectedId,
-          cursoNome: safeText(course?.nomeCurso, 'Curso'),
-          local: String(aluno?.local || '').trim(),
-          data: String(aluno?.data || '').trim(),
-          duracao: String(course?.duracao || aluno?.duracao || '').trim(),
-          horarioInicio: String(course?.horarioInicio || aluno?.horarioInicio || '').trim(),
-          periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
-          periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
-          textoCertificado: buildCertificatePreviewText({
-            nome: aluno?.nome,
-            cpf: aluno?.cpf,
-            nomeCurso: safeText(course?.nomeCurso, 'Curso'),
-            duracao: String(course?.duracao || aluno?.duracao || '').trim(),
-            local: String(aluno?.local || '').trim(),
-            periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
-            periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
-          }),
-          conteudoProgramatico: resolveCourseProgramContent(selectedId, ''),
-          locked: false,
-          confirmed: false,
-          needsReconfirm: false,
-        },
-      ]);
-    }
-    setSelectedCourseIds((prev) => (prev.includes(selectedId) ? prev : [...prev, selectedId]));
-    setCourseToAdd('');
-    setStepIndex(Math.max(0, activeForms.length));
   };
 
   const saveDraftFromCurrent = async () => {
@@ -897,25 +857,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       <div className="space-y-4">
         <div>
           <p className="text-sm font-semibold text-gray-700 mb-2">
-            Cursos para emissão - {safeText(aluno?.nome)}
+            Checklist de emissão - {safeText(aluno?.nome)}
           </p>
-          <div className="mb-2 flex gap-2">
-            <select
-              value={courseToAdd}
-              onChange={(e) => setCourseToAdd(e.target.value)}
-              className="input-field text-sm"
-            >
-              <option value="">Selecionar curso para adicionar...</option>
-              {(Array.isArray(courses) ? courses : []).map((course) => (
-                <option key={`add-course-${course.id}`} value={String(course.id)}>
-                  {safeText(course.nomeCurso, 'Curso')}
-                </option>
-              ))}
-            </select>
-            <button type="button" onClick={addCourseToChecklist} disabled={!courseToAdd} className="btn-secondary text-xs whitespace-nowrap disabled:opacity-60">
-              Adicionar curso
-            </button>
-          </div>
           <div className="mb-2">
             <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
               <span>Progresso do checklist</span>
@@ -1076,7 +1019,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   periodoFim: String(item.periodoFim || item.data || '').trim(),
                   textoCertificado: String(item.textoCertificado || '').trim(),
                   conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
-                  lockChecklist: false,
+                  lockChecklist: true,
                   temInstrutor,
                   instrutorNome: instrutorNome.trim(),
                   instrutorCargo: instrutorCargo.trim(),
@@ -1435,6 +1378,35 @@ export default function AnalisePage() {
     const op = `${downloadModalAluno.id}:download:${downloadActionType}`;
     setProcessing(op);
     try {
+      const byCourse = new Map(
+        (Array.isArray(courseConfirmations) ? courseConfirmations : [])
+          .map((item) => [String(item.cursoId || '').trim(), item]),
+      );
+      const allByCpf = (Array.isArray(safeStudents) ? safeStudents : [])
+        .filter((s) => String(s.cpf || '').trim() === String(downloadModalAluno.cpf || '').trim());
+
+      // Autoriza primeiro os certificados pendentes confirmados no checklist.
+      for (const student of allByCpf) {
+        const key = String(student.cursoId || '').trim();
+        const confirm = byCourse.get(key);
+        if (!confirm) continue;
+        if (student.statusCadastro !== 'aprovado') continue;
+        if (student.statusCertificado === 'aprovado') continue;
+        await updateStudentStatus(student.id, 'statusCertificado', 'aprovado', null, {
+          certificadoConfirmacao: {
+            cursoId: key,
+            cursoNome: student.nomeCurso,
+            local: confirm.local,
+            data: confirm.data,
+            duracao: confirm.duracao,
+            temInstrutor: confirm.temInstrutor,
+            instrutorNome: confirm.instrutorNome,
+            instrutorCargo: confirm.instrutorCargo,
+            instrutorRegistro: confirm.instrutorRegistro,
+          },
+        });
+      }
+
       const result = await api.exportCertificates({
         studentIds: [String(downloadModalAluno.id)],
         action: downloadActionType,
@@ -1444,6 +1416,7 @@ export default function AnalisePage() {
         actorRole: user?.role || 'responsavel',
       });
       downloadBlob(result);
+      await refreshData();
       if (saveAsDefault) {
         const nextConfig = { signatureType, courseConfirmations };
         setQuickEmissionConfig(nextConfig);
