@@ -170,6 +170,43 @@ function SelecionarCertificadoPdfModal({ isOpen, onClose, aluno, allStudents, on
   );
 }
 
+function CursosAlunoAcaoModal({ isOpen, onClose, group, onAbrirChecklist, onBaixarPdf }) {
+  const items = Array.isArray(group?.students) ? group.students : [];
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Cursos do aluno" size="md">
+      <div className="space-y-3">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
+          <p><strong>Aluno:</strong> {safeText(group?.nome)}</p>
+          <p><strong>CPF:</strong> {safeText(group?.cpf)}</p>
+          <p><strong>Empresa:</strong> {safeText(group?.empresa)}</p>
+        </div>
+        <div className="max-h-80 overflow-y-auto space-y-2">
+          {items.map((item) => (
+            <div key={`curso-acao-${item.id}`} className="rounded-lg border border-gray-200 p-3">
+              <p className="text-sm font-semibold text-gray-800">{safeText(item.nomeCurso, 'Curso')}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Cadastro: {safeText(item.statusCadastro)} • Certificado: {safeText(item.statusCertificado)}
+              </p>
+              <div className="flex justify-end mt-2">
+                {item.statusCertificado === 'aprovado' ? (
+                  <button type="button" className="btn-secondary text-xs" onClick={() => onBaixarPdf(item)}>
+                    <Download className="w-3.5 h-3.5" />
+                    Baixar PDF
+                  </button>
+                ) : (
+                  <button type="button" className="btn-success text-xs" onClick={() => onAbrirChecklist(item)}>
+                    Checklist e emitir
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AutorizaCadastroModal({
   isOpen,
   onClose,
@@ -734,7 +771,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     const payload = {
       cursoId: courseIdKey,
       cursoNome: current.cursoNome,
-      selectedCourseIds: [...selectedCourseIds],
+      selectedCourseIds: [courseIdKey],
       signatureType,
       saveAsDefault,
       temInstrutor,
@@ -751,18 +788,18 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       textoCertificado: String(current.textoCertificado || '').trim(),
       conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       // Guarda o estado do checklist do modal para agilizar próximos alunos do mesmo curso
-      courseFormsSnapshot: courseForms.map((item) => ({
-        cursoId: String(item.cursoId || '').trim(),
-        cursoNome: String(item.cursoNome || '').trim(),
-        local: String(item.local || '').trim(),
-        data: String(item.data || '').trim(),
-        duracao: String(item.duracao || '').trim(),
-        horarioInicio: String(item.horarioInicio || '').trim(),
-        periodoInicio: String(item.periodoInicio || item.data || '').trim(),
-        periodoFim: String(item.periodoFim || item.data || '').trim(),
-        textoCertificado: String(item.textoCertificado || '').trim(),
-        conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
-      })),
+      courseFormsSnapshot: [{
+        cursoId: courseIdKey,
+        cursoNome: String(current.cursoNome || '').trim(),
+        local: String(current.local || '').trim(),
+        data: String(current.data || '').trim(),
+        duracao: String(current.duracao || '').trim(),
+        horarioInicio: String(current.horarioInicio || '').trim(),
+        periodoInicio: String(current.periodoInicio || current.data || '').trim(),
+        periodoFim: String(current.periodoFim || current.data || '').trim(),
+        textoCertificado: String(current.textoCertificado || '').trim(),
+        conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
+      }],
       savedAt: new Date().toISOString(),
     };
     try {
@@ -828,25 +865,6 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           <p className="text-sm font-semibold text-gray-700 mb-2">
             Cursos para emissão - {safeText(aluno?.nome)}
           </p>
-          <div className="mb-2 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={saveDraftFromCurrent}
-              className="btn-secondary text-xs"
-              disabled={!current || current.locked || draftBusy}
-            >
-              {draftBusy ? 'Salvando...' : 'Salvar rascunho'}
-            </button>
-            <button
-              type="button"
-              onClick={applyDraftToCurrent}
-              className="btn-secondary text-xs"
-              disabled={!current || current.locked || draftBusy}
-            >
-              {draftBusy ? 'Carregando...' : 'Usar rascunho'}
-            </button>
-            {draftStatus ? <span className="text-xs text-amber-800">{draftStatus}</span> : null}
-          </div>
           <div className="mb-2 flex gap-2">
             <select
               value={courseToAdd}
@@ -1060,6 +1078,27 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           <input type="checkbox" checked={saveAsDefault} onChange={(e) => setSaveAsDefault(e.target.checked)} />
           Usar estes dados nas próximas emissões (sem perguntar novamente)
         </label>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={saveDraftFromCurrent}
+              className="btn-secondary text-xs"
+              disabled={!current || current.locked || draftBusy}
+            >
+              {draftBusy ? 'Salvando...' : 'Salvar rascunho'}
+            </button>
+            <button
+              type="button"
+              onClick={applyDraftToCurrent}
+              className="btn-secondary text-xs"
+              disabled={!current || current.locked || draftBusy}
+            >
+              {draftBusy ? 'Carregando...' : 'Usar rascunho'}
+            </button>
+            {draftStatus ? <span className="text-xs text-amber-800">{draftStatus}</span> : null}
+          </div>
+        </div>
       </div>
     </Modal>
   );
@@ -1261,6 +1300,7 @@ export default function AnalisePage() {
   const [companyRequestMotivo, setCompanyRequestMotivo] = useState('');
   const [autorizaCadastroAluno, setAutorizaCadastroAluno] = useState(null);
   const [downloadModalAluno, setDownloadModalAluno] = useState(null);
+  const [cursoAcaoGroup, setCursoAcaoGroup] = useState(null);
   const [pdfSelectAluno, setPdfSelectAluno] = useState(null);
   const [downloadActionType, setDownloadActionType] = useState('pdf');
   const [editaAlunoModal, setEditaAlunoModal] = useState(null);
@@ -1796,8 +1836,7 @@ export default function AnalisePage() {
                           {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && (
                             <button
                               onClick={() => {
-                                setDownloadActionType('pdf');
-                                setDownloadModalAluno(aluno);
+                                setCursoAcaoGroup(group);
                               }}
                               disabled={isProcessing}
                               className="btn-success text-xs py-1.5 px-3 disabled:opacity-60"
@@ -1914,6 +1953,20 @@ export default function AnalisePage() {
           setPdfSelectAluno(null);
           setDownloadActionType('pdf');
           setDownloadModalAluno(selectedCourseStudent);
+        }}
+      />
+      <CursosAlunoAcaoModal
+        isOpen={Boolean(cursoAcaoGroup)}
+        onClose={() => setCursoAcaoGroup(null)}
+        group={cursoAcaoGroup}
+        onAbrirChecklist={(selectedCourseStudent) => {
+          setCursoAcaoGroup(null);
+          setDownloadActionType('pdf');
+          setDownloadModalAluno(selectedCourseStudent);
+        }}
+        onBaixarPdf={(selectedCourseStudent) => {
+          setCursoAcaoGroup(null);
+          handleDownloadPdf(selectedCourseStudent);
         }}
       />
     </div>
