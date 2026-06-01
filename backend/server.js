@@ -701,9 +701,21 @@ function updateCompanyChangeRequestStatus(id, payload = {}, auth = {}) {
 }
 
 function dashboardFromData(studentsData = [], classesData = [], coursesData = []) {
-  const totalAlunos = studentsData.length;
-  const alunosAprovados = studentsData.filter(s => s.statusCadastro === 'aprovado').length;
-  const alunosPendentes = studentsData.filter(s => s.statusCadastro === 'pendente').length;
+  const byCpf = new Map();
+  studentsData.forEach((student) => {
+    const key = String(student.cpf || '').trim() || String(student.id);
+    if (!byCpf.has(key)) byCpf.set(key, []);
+    byCpf.get(key).push(student);
+  });
+  const groupedStudents = [...byCpf.values()];
+  const totalAlunos = groupedStudents.length;
+  const alunosPendentes = groupedStudents.filter((items) =>
+    items.some((s) => s.statusCadastro === 'pendente')
+  ).length;
+  const alunosAprovados = groupedStudents.filter((items) =>
+    items.length > 0
+    && items.every((s) => s.statusCadastro === 'aprovado')
+  ).length;
   const certificadosEmitidos = studentsData.filter(s => s.statusCertificado === 'aprovado').length;
   const certificadosEnviados = studentsData.filter(s => s.certificadoEnviado).length;
   const totalCursos = coursesData.length;

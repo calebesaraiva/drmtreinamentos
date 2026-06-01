@@ -115,9 +115,20 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick, actionLabel, 
 }
 
 function buildDashboardFallback(students, courses) {
-  const totalAlunos = students.length;
-  const alunosAprovados = students.filter(s => s.statusCadastro === 'aprovado').length;
-  const alunosPendentes = students.filter(s => s.statusCadastro === 'pendente').length;
+  const byCpf = new Map();
+  students.forEach((student) => {
+    const key = String(student.cpf || '').trim() || String(student.id);
+    if (!byCpf.has(key)) byCpf.set(key, []);
+    byCpf.get(key).push(student);
+  });
+  const groupedStudents = [...byCpf.values()];
+  const totalAlunos = groupedStudents.length;
+  const alunosAprovados = groupedStudents.filter((items) =>
+    items.length > 0 && items.every((s) => s.statusCadastro === 'aprovado')
+  ).length;
+  const alunosPendentes = groupedStudents.filter((items) =>
+    items.some((s) => s.statusCadastro === 'pendente')
+  ).length;
   const certificadosEmitidos = students.filter(s => s.statusCertificado === 'aprovado').length;
   const certificadosEnviados = students.filter(s => s.certificadoEnviado).length;
   const totalCursos = courses.length;
