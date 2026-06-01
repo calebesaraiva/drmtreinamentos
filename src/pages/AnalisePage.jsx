@@ -1244,7 +1244,28 @@ export default function AnalisePage() {
     }
   };
 
-  const handleAprovarCadastro = (aluno) => {
+  const handleAprovarCadastro = async (aluno) => {
+    const existingCourses = Array.isArray(aluno?.cursosConcluidos)
+      ? aluno.cursosConcluidos.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const rememberedFilial = filialByEmpresa[String(aluno?.empresa || '').trim().toLowerCase()] || '';
+    const existingFilial = String(aluno?.filial || rememberedFilial || '').trim();
+
+    // Se já temos os dados definidos no aluno, aprova direto e pula o modal.
+    if (existingFilial.length >= 2 && existingCourses.length > 0) {
+      const id = aluno.id;
+      setProcessing(`${id}:statusCadastro`);
+      try {
+        await updateStudentStatus(id, 'statusCadastro', 'aprovado', null, {
+          filial: existingFilial,
+          cursosConcluidos: existingCourses,
+        });
+      } finally {
+        setProcessing(null);
+      }
+      return;
+    }
+
     setAutorizaCadastroAluno(aluno);
   };
 
