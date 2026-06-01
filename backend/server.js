@@ -1549,6 +1549,10 @@ function buildSafeDetailsLine({ cidade = '', dataExtenso = '', hora = '' }) {
 function sanitizeCertificateNarrative(text = '') {
   return String(text || '')
     .replace(/carga hor[aá]ria de\s*carga hor[aá]ria/gi, 'carga horária')
+    .replace(
+      /(realizado em[\s\S]*?),\s*(\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4})\s*,\s*(no per[ií]odo de)/gi,
+      '$1, $3',
+    )
     .replace(/(\b\d{1,2}\/\d{1,2}\/\d{2,4}\b)\s*,\s*\1/gi, '$1')
     .replace(/(\b\d{1,2}\s+de\s+[a-z\u00C0-\u017F]+\s+de\s+\d{4}\b)\s*,\s*\1/gi, '$1')
     .replace(/\s{2,}/g, ' ')
