@@ -252,11 +252,14 @@ const LEGACY_COURSE_NAME_ALIASES = new Map([
   ['NR-10 - Segurança em Instalações e Serviços em Eletricidade', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
   ['NR-35 - Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
   ['NR-35 - Segurança em Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
+  ['NR-35 - Reciclagem Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
+  ['NR35 - Reciclagem Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
   ['NR-18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT'],
 ]);
 
 const LEGACY_COURSE_CODE_ALIASES = new Map([
   ['NR-10-SEP', 'NR-10'],
+  ['NR-35-REC', 'NR-35'],
 ]);
 
 function normalizeCourseNameByAlias(name = '') {
