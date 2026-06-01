@@ -30,6 +30,26 @@ function formatDateTime(dateTime) {
   });
 }
 
+function formatDateBR(value) {
+  if (!value) return '';
+  const raw = String(value).trim();
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) return raw;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [y, m, d] = raw.split('-');
+    return `${d}/${m}/${y}`;
+  }
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleDateString('pt-BR');
+}
+
+function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, periodoInicio, periodoFim }) {
+  const inicio = formatDateBR(periodoInicio);
+  const fim = formatDateBR(periodoFim);
+  const periodo = inicio && fim ? (inicio === fim ? inicio : `${inicio} a ${fim}`) : (fim || inicio || 'data pendente');
+  return `Certificamos que ${safeText(nome, 'ALUNO')}, portador(a) do CPF ${safeText(cpf, '000.000.000-00')}, concluiu com aproveitamento satisfatório o treinamento ${safeText(nomeCurso, 'CURSO')}, com carga horária de ${safeText(duracao, 'carga horária pendente')}, realizado em ${safeText(local, 'local pendente')}, no período de ${periodo}, em conformidade com os requisitos aplicáveis.`;
+}
+
 function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
   const [motivo, setMotivo] = useState('');
   const [custom, setCustom] = useState('');
@@ -369,6 +389,17 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       data: String(item.data || '').trim(),
       duracao: String(item.duracao || '').trim(),
       horarioInicio: String(item.horarioInicio || '').trim(),
+      periodoInicio: String(item.periodoInicio || item.data || '').trim(),
+      periodoFim: String(item.periodoFim || item.data || '').trim(),
+      textoCertificado: buildCertificatePreviewText({
+        nome: item.nome,
+        cpf: item.cpf,
+        nomeCurso: item.nomeCurso,
+        duracao: item.duracao,
+        local: item.local,
+        periodoInicio: item.periodoInicio || item.data,
+        periodoFim: item.periodoFim || item.data,
+      }),
       confirmed: false,
     })));
     setStepIndex(0);
@@ -380,7 +411,11 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const current = activeForms[Math.min(stepIndex, Math.max(0, activeForms.length - 1))];
   const confirmedCount = activeForms.filter((item) => item.confirmed).length;
   const progressPercent = activeForms.length > 0 ? Math.round((confirmedCount / activeForms.length) * 100) : 0;
-  const isCurrentValid = current && String(current.local).trim() && String(current.data).trim() && String(current.duracao).trim();
+  const isCurrentValid = current
+    && String(current.local).trim()
+    && String(current.data).trim()
+    && String(current.duracao).trim()
+    && String(current.textoCertificado || '').trim();
   const canAdvance = Boolean(isCurrentValid);
   const allCoursesConfirmed = activeForms.length > 0 && activeForms.every((item) => item.confirmed);
   const instructorOk = !temInstrutor || (instrutorNome.trim() && instrutorCargo.trim() && instrutorRegistro.trim());
@@ -397,7 +432,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   const updateCurrentField = (field, value) => {
     if (!current) return;
     setCourseForms((prev) => prev.map((item) => (
-      item.cursoId === current.cursoId && !item.confirmed
+      item.cursoId === current.cursoId
         ? { ...item, [field]: value, confirmed: false }
         : item
     )));
@@ -417,7 +452,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     const alreadyExists = courseForms.some((item) => item.cursoId === selectedId);
     if (!alreadyExists) {
       const course = (Array.isArray(courses) ? courses : []).find((item) => String(item.id) === selectedId);
-      setCourseForms((prev) => [
+          setCourseForms((prev) => [
         ...prev,
         {
           cursoId: selectedId,
@@ -426,6 +461,17 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
           data: String(aluno?.data || '').trim(),
           duracao: String(course?.duracao || aluno?.duracao || '').trim(),
           horarioInicio: String(course?.horarioInicio || aluno?.horarioInicio || '').trim(),
+          periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
+          periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
+          textoCertificado: buildCertificatePreviewText({
+            nome: aluno?.nome,
+            cpf: aluno?.cpf,
+            nomeCurso: safeText(course?.nomeCurso, 'Curso'),
+            duracao: String(course?.duracao || aluno?.duracao || '').trim(),
+            local: String(aluno?.local || '').trim(),
+            periodoInicio: String(aluno?.periodoInicio || aluno?.data || '').trim(),
+            periodoFim: String(aluno?.periodoFim || aluno?.data || '').trim(),
+          }),
           confirmed: false,
         },
       ]);
@@ -499,19 +545,31 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Local do curso *</label>
-                <input value={current.local} onChange={(e) => updateCurrentField('local', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+                <input value={current.local} onChange={(e) => updateCurrentField('local', e.target.value)} className="input-field mt-1" />
               </div>
               <div>
                 <label className="text-sm font-semibold text-gray-700">Data do curso *</label>
-                <input type="date" value={current.data} onChange={(e) => updateCurrentField('data', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+                <input type="date" value={current.data} onChange={(e) => updateCurrentField('data', e.target.value)} className="input-field mt-1" />
               </div>
               <div>
                 <label className="text-sm font-semibold text-gray-700">Carga horária *</label>
-                <input value={current.duracao} onChange={(e) => updateCurrentField('duracao', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+                <input value={current.duracao} onChange={(e) => updateCurrentField('duracao', e.target.value)} className="input-field mt-1" />
               </div>
               <div className="sm:col-span-2">
                 <label className="text-sm font-semibold text-gray-700">Hora (opcional)</label>
-                <input value={current.horarioInicio} onChange={(e) => updateCurrentField('horarioInicio', e.target.value)} className="input-field mt-1" disabled={current.confirmed} />
+                <input value={current.horarioInicio} onChange={(e) => updateCurrentField('horarioInicio', e.target.value)} className="input-field mt-1" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="text-sm font-semibold text-gray-700">Texto do certificado *</label>
+                <textarea
+                  value={current.textoCertificado || ''}
+                  onChange={(e) => updateCurrentField('textoCertificado', e.target.value)}
+                  rows={5}
+                  className="input-field mt-1 resize-y"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Você pode ajustar o texto quando a empresa pedir uma variação.
+                </p>
               </div>
             </div>
             <div className="flex items-center justify-between">
@@ -563,8 +621,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             type="button"
             disabled={!canConfirm || loading}
             className="btn-success text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-            onClick={() => {
-              if (temInstrutor) {
+              onClick={() => {
+                if (temInstrutor) {
                 try {
                   localStorage.setItem(cacheKey, JSON.stringify({
                     nome: instrutorNome.trim(),
@@ -583,6 +641,9 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   data: String(item.data || '').trim(),
                   duracao: String(item.duracao || '').trim(),
                   horarioInicio: String(item.horarioInicio || '').trim(),
+                  periodoInicio: String(item.periodoInicio || item.data || '').trim(),
+                  periodoFim: String(item.periodoFim || item.data || '').trim(),
+                  textoCertificado: String(item.textoCertificado || '').trim(),
                   temInstrutor,
                   instrutorNome: instrutorNome.trim(),
                   instrutorCargo: instrutorCargo.trim(),

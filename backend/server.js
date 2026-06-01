@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, timingSafeEqual, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1137,6 +1137,33 @@ function sanitizeFileName(value = 'certificado') {
     .toLowerCase() || 'certificado';
 }
 
+function normalizeCertificateContext(context = {}) {
+  const temInstrutor = !(context.temInstrutor === false || context.temInstrutor === 'false');
+  const instrutorNome = String(context.instrutorNome || '').trim();
+  const instrutorCargo = String(context.instrutorCargo || '').trim();
+  const instrutorRegistro = String(context.instrutorRegistro || '').trim();
+  const local = String(context.local || '').trim();
+  const data = String(context.data || '').trim();
+  const duracao = String(context.duracao || '').trim();
+  const horarioInicio = String(context.horarioInicio || '').trim();
+  const textoCertificado = String(context.textoCertificado || '').trim();
+  const normalized = {
+    temInstrutor,
+    instrutor: temInstrutor ? instrutorNome : '',
+    instrutorNome: temInstrutor ? instrutorNome : '',
+    instrutorCargo: temInstrutor ? instrutorCargo : '',
+    instrutorRegistro: temInstrutor ? instrutorRegistro : '',
+    cargoInstrutor: temInstrutor ? instrutorCargo : '',
+    registroInstrutor: temInstrutor ? instrutorRegistro : '',
+    local,
+    data,
+    duracao,
+    horarioInicio,
+    textoCertificado,
+  };
+  return normalized;
+}
+
 function certificateFileName(student = {}) {
   const date = sanitizeFileName(student.periodoFim || student.data || new Date().toISOString().split('T')[0]);
   return `${sanitizeFileName(student.nome)}-${date}-${sanitizeFileName(student.nomeCurso)}.pdf`;
@@ -1202,9 +1229,9 @@ function certificatePdfValues(config = {}, student = {}) {
   const data = { ...sampleCertificateStudent, ...student };
   const manualSignature = data.assinaturaTipo === 'manual';
   const temInstrutor = data.temInstrutor !== false;
-  const instrutorNome = temInstrutor ? data.instrutorNome || data.nomeInstrutor || data.instrutor || 'Instrutor não informado' : '';
-  const instrutorCargo = temInstrutor ? data.instrutorCargo || data.cargoInstrutor || data.instrutorFuncao || 'Técnico/Engenheiro responsável' : '';
-  const instrutorRegistro = temInstrutor ? data.instrutorRegistro || data.registroInstrutor || data.creaInstrutor || data.cftInstrutor || 'CREA/CFT não informado' : '';
+  const instrutorNome = temInstrutor ? data.instrutorNome || data.nomeInstrutor || data.instrutor || '' : '';
+  const instrutorCargo = temInstrutor ? data.instrutorCargo || data.cargoInstrutor || data.instrutorFuncao || '' : '';
+  const instrutorRegistro = temInstrutor ? data.instrutorRegistro || data.registroInstrutor || data.creaInstrutor || data.cftInstrutor || '' : '';
   const periodoInicio = formatDateBR(data.periodoInicio || data.data);
   const periodoFim = formatDateBR(data.periodoFim || data.data);
   const templateValues = {
@@ -1216,7 +1243,7 @@ function certificatePdfValues(config = {}, student = {}) {
     instrutorCargo,
     instrutorRegistro,
     duracao: data.duracao || '8 horas',
-    local: data.local || 'local definido',
+    local: data.local || '',
     cidade: data.local || cfg.endereco,
     data: formatDateBR(data.data),
     dataExtenso: formatLongDateBR(data.data),
@@ -1237,11 +1264,13 @@ function certificatePdfValues(config = {}, student = {}) {
     marca: 'DRM',
     nomeEmpresa: cfg.nomeEmpresa,
     cnpjEmpresaTopo: renderCertificateTemplate(cfg.cnpjModelo, templateValues),
-    localCursoTopo: data.local || cfg.endereco,
+    localCursoTopo: data.local || '',
     nrBadge: renderCertificateTemplate(cfg.normaBadge, templateValues),
     nrBadgeConteudo: renderCertificateTemplate(cfg.normaBadge, templateValues),
     titulo: cfg.tituloCertificado,
-    textoCertificado: renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
+    textoCertificado: data.textoCertificado
+      ? String(data.textoCertificado).trim()
+      : renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues),
     dataLocal: renderCertificateTemplate(cfg.detalhesCursoModelo, templateValues),
     assinaturaResponsavel: cfg.nomeResponsavel,
     assinaturaValidade: manualSignature
@@ -1449,14 +1478,18 @@ function drawCertificateField(doc, id, field, cfg, values, scale) {
 
 function generateCertificatePdf(student, options = {}) {
   return new Promise((resolve, reject) => {
+    const runtimeStudent = {
+      ...student,
+      ...(options.certificateContext ? normalizeCertificateContext(options.certificateContext) : {}),
+    };
     const doc = new PDFDocument({
       size: 'A4',
       layout: 'landscape',
       margin: 0,
       info: {
-        Title: `Certificado - ${student.nome || 'Aluno'}`,
+        Title: `Certificado - ${runtimeStudent.nome || 'Aluno'}`,
         Author: 'DRM Treinamentos e Certificações',
-        Subject: student.nomeCurso || 'Certificado',
+        Subject: runtimeStudent.nomeCurso || 'Certificado',
       },
     });
     const chunks = [];
@@ -1469,8 +1502,8 @@ function generateCertificatePdf(student, options = {}) {
       assinaturaTipo: options.signatureType === 'manual' ? 'manual' : 'digital',
     };
     const layout = mergeCertificateLayoutPdf(certificateSettings.layout || {});
-    const values = certificatePdfValues(cfg, { ...student, assinaturaTipo: cfg.assinaturaTipo });
-    const showInstructor = student?.temInstrutor !== false;
+    const values = certificatePdfValues(cfg, { ...runtimeStudent, assinaturaTipo: cfg.assinaturaTipo });
+    const showInstructor = runtimeStudent?.temInstrutor !== false;
     const instructorFields = new Set(['instrutorNome', 'instrutorCargo', 'instrutorRegistro', 'instrutorTipo']);
     const scale = doc.page.width / CERTIFICATE_PAGE_WIDTH;
     const pages = Array.from({ length: layout.pages || 1 }, (_, index) => index + 1);
@@ -2516,17 +2549,120 @@ async function updateStudentStatus(id, payload) {
   if (field === 'statusCertificado' && value === 'aprovado' && students[index].presente !== true && Number(students[index].presenca || 0) < 75) {
     return { status: 400, error: 'Certificado so pode ser liberado para aluno presente na chamada.' };
   }
+  if (field === 'statusCertificado' && value === 'aprovado') {
+    const confirm = payload.certificadoConfirmacao || {};
+    const local = String(confirm.local || '').trim();
+    const data = String(confirm.data || '').trim();
+    const duracao = String(confirm.duracao || '').trim();
+    const cursoId = String(confirm.cursoId || '').trim();
+    const temInstrutor = !(confirm.temInstrutor === false || confirm.temInstrutor === 'false');
+    const instrutorNome = String(confirm.instrutorNome || '').trim();
+    const instrutorCargo = String(confirm.instrutorCargo || '').trim();
+    const instrutorRegistro = String(confirm.instrutorRegistro || '').trim();
+    if (!cursoId || cursoId !== String(students[index].cursoId || '').trim()) {
+      return { status: 400, error: 'Confirme o curso do certificado antes de autorizar.' };
+    }
+    if (!local || !data || !duracao) {
+      return { status: 400, error: 'Confirme local, data e carga horária para autorizar o certificado.' };
+    }
+    if (temInstrutor && (!instrutorNome || !instrutorCargo || !instrutorRegistro)) {
+      return { status: 400, error: 'Informe nome, função e registro do instrutor para autorizar o certificado.' };
+    }
+  }
 
   let updated = applyStudentStatus(students[index], field, value, motivo, actor);
+  const filial = String(payload.filial || '').trim();
+  const cursosConcluidosIds = Array.isArray(payload.cursosConcluidos)
+    ? payload.cursosConcluidos.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  const cursosConcluidos = cursosConcluidosIds
+    .map((courseId) => normalizeCourse(courses.find(item => String(item.id) === courseId) || {}))
+    .filter((course) => course.id)
+    .map((course) => course.nomeCurso);
+  if (field === 'statusCadastro' && value === 'aprovado') {
+    if (!filial) {
+      return { status: 400, error: 'Informe a filial para aprovar o cadastro do aluno.' };
+    }
+    if (cursosConcluidos.length === 0) {
+      return { status: 400, error: 'Selecione ao menos 1 curso concluído para aprovar o cadastro.' };
+    }
+    if (filial) {
+      updated.filial = filial;
+    }
+    if (cursosConcluidos.length > 0) {
+      updated.cursosConcluidos = cursosConcluidos;
+      updated.cursosConcluidosIds = cursosConcluidosIds;
+    }
+  }
   if (field === 'statusCertificado' && value === 'aprovado') {
+    const confirm = payload.certificadoConfirmacao || {};
+    const temInstrutor = !(confirm.temInstrutor === false || confirm.temInstrutor === 'false');
     updated = {
       ...updated,
+      local: String(confirm.local || updated.local || '').trim(),
+      data: String(confirm.data || updated.data || '').trim(),
+      duracao: String(confirm.duracao || updated.duracao || '').trim(),
+      temInstrutor,
+      instrutor: temInstrutor ? String(confirm.instrutorNome || updated.instrutor || '').trim() : '',
+      instrutorNome: temInstrutor ? String(confirm.instrutorNome || updated.instrutorNome || '').trim() : '',
+      instrutorCargo: temInstrutor ? String(confirm.instrutorCargo || updated.instrutorCargo || '').trim() : '',
+      instrutorRegistro: temInstrutor ? String(confirm.instrutorRegistro || updated.instrutorRegistro || '').trim() : '',
+      cargoInstrutor: temInstrutor ? String(confirm.instrutorCargo || updated.cargoInstrutor || '').trim() : '',
+      registroInstrutor: temInstrutor ? String(confirm.instrutorRegistro || updated.registroInstrutor || '').trim() : '',
+      certificadoCursoConfirmado: String(confirm.cursoNome || updated.nomeCurso || '').trim(),
+      certificadoConfirmadoEm: new Date().toISOString(),
       certificadoEnviado: false,
       dataEnvio: null,
       certificadoEmailErro: null,
     };
   }
   students = students.map(student => (String(student.id) === String(id) ? updated : student));
+
+  if (field === 'statusCadastro' && value === 'aprovado' && cursosConcluidosIds.length > 1) {
+    const existingByCourse = new Set(
+      students
+        .filter(student => String(student.cpf || '').trim() === String(updated.cpf || '').trim())
+        .map(student => String(student.cursoId || '').trim()),
+    );
+    const basePayload = {
+      nome: updated.nome,
+      cpf: updated.cpf,
+      empresa: updated.empresa,
+      email: updated.email,
+      telefone: updated.telefone,
+      cargoFuncao: updated.cargoFuncao,
+      presenca: updated.presenca,
+      notaProva: updated.notaProva,
+      presente: updated.presente,
+      turmaId: updated.turmaId || null,
+      filial: filial || updated.filial || '',
+      cursosConcluidos,
+      cursosConcluidosIds,
+      statusCadastro: 'aprovado',
+      statusCertificado: 'pendente',
+      certificadoEnviado: false,
+      motivoRecusa: null,
+      createdAt: updated.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    for (const courseId of cursosConcluidosIds) {
+      const normalizedCourseId = String(courseId || '').trim();
+      if (!normalizedCourseId || existingByCourse.has(normalizedCourseId)) continue;
+      const extraCourse = normalizeCourse(courses.find(item => String(item.id) === normalizedCourseId) || {});
+      if (!extraCourse.id) continue;
+      const newStudent = {
+        id: randomUUID(),
+        ...basePayload,
+        cursoId: extraCourse.id,
+        nomeCurso: extraCourse.nomeCurso,
+        qrCode: extraCourse.qrCode,
+      };
+      students.push(newStudent);
+      existingByCourse.add(normalizedCourseId);
+    }
+  }
+
   persistData();
   return { student: updated };
 }
@@ -2580,7 +2716,7 @@ async function exportCertificates(payload) {
   const ids = Array.isArray(payload.studentIds) ? payload.studentIds : [];
   const action = payload.action || 'both';
   const signatureType = payload.signatureType === 'manual' ? 'manual' : 'digital';
-  if (!['email', 'pdf', 'both'].includes(action)) {
+  if (!['email', 'pdf', 'both', 'zip'].includes(action)) {
     return { status: 400, error: 'Acao invalida.' };
   }
   if (ids.length === 0) return { status: 400, error: 'Selecione ao menos um aluno.' };
@@ -2592,21 +2728,61 @@ async function exportCertificates(payload) {
   if (selected.length > 1) {
     return { status: 400, error: 'Para manter o controle da validação, a emissão é permitida para 1 certificado por vez.' };
   }
-  const invalid = selected.find(student => student.statusCertificado !== 'aprovado');
-  if (invalid) return { status: 400, error: `Certificado nao aprovado para ${invalid.nome}.` };
-
   const shouldEmail = action === 'email' || action === 'both';
-  const shouldPdf = action === 'pdf' || action === 'both';
+  const shouldZip = action === 'zip';
+  const shouldPdf = action === 'pdf' || action === 'both' || shouldZip;
+  const certificateContext = payload.certificateContext || null;
+  const courseConfirmations = Array.isArray(payload.courseConfirmations) ? payload.courseConfirmations : [];
+  const confirmationByCourseId = new Map(
+    courseConfirmations
+      .map((item) => [String(item?.cursoId || '').trim(), normalizeCertificateContext(item || {})])
+      .filter(([courseId]) => courseId),
+  );
+  if (certificateContext) {
+    const normalizedCtx = normalizeCertificateContext(certificateContext);
+    if (normalizedCtx.temInstrutor && (!normalizedCtx.instrutorNome || !normalizedCtx.instrutorCargo || !normalizedCtx.instrutorRegistro)) {
+      return { status: 400, error: 'Preencha os dados do instrutor ou marque emissão sem instrutor.' };
+    }
+    if (!normalizedCtx.local || !normalizedCtx.data || !normalizedCtx.duracao) {
+      return { status: 400, error: 'Confirme local, data e carga horária antes de emitir o certificado.' };
+    }
+  }
+
+  const validateContext = (ctx = {}) => {
+    if (!ctx.local || !ctx.data || !ctx.duracao) return false;
+    if (ctx.temInstrutor && (!ctx.instrutorNome || !ctx.instrutorCargo || !ctx.instrutorRegistro)) return false;
+    return true;
+  };
+  const baseSelected = selected[0];
+  if (!baseSelected) return { status: 404, error: 'Nenhum aluno encontrado.' };
+
+  const selectedForProcessing = shouldZip
+    ? students.filter(student => String(student.cpf || '').trim() === String(baseSelected.cpf || '').trim())
+    : [baseSelected];
+  const approvedForProcessing = selectedForProcessing.filter(student => student.statusCertificado === 'aprovado');
+  if (approvedForProcessing.length === 0) {
+    return { status: 400, error: `Nenhum certificado aprovado encontrado para ${baseSelected.nome}.` };
+  }
+
+  for (const student of approvedForProcessing) {
+    const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
+    const effectiveCtx = byCourseCtx || (certificateContext ? normalizeCertificateContext(certificateContext) : null);
+    if (!effectiveCtx || !validateContext(effectiveCtx)) {
+      return { status: 400, error: `Confirme os dados do curso ${student.nomeCurso} antes de emitir.` };
+    }
+  }
   const updatedById = new Map();
   const actor = actorLabel(payload);
   const actorRole = payload.actorRole || 'responsavel';
   const now = new Date().toISOString();
 
   if (shouldEmail) {
-    for (const student of selected) {
+    for (const student of approvedForProcessing) {
       let updated = student;
       try {
-        const emailResult = await sendCertificateEmail(student, { signatureType });
+        const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
+        const effectiveCtx = byCourseCtx || certificateContext;
+        const emailResult = await sendCertificateEmail(student, { signatureType, certificateContext: effectiveCtx });
         updated = {
           ...student,
           certificadoEnviado: emailResult.sent,
@@ -2624,7 +2800,7 @@ async function exportCertificates(payload) {
     students = students.map(student => updatedById.get(String(student.id)) || student);
   }
 
-  const affectedClassIds = [...new Set(selected.map(student => student.turmaId).filter(Boolean).map(String))];
+  const affectedClassIds = [...new Set(approvedForProcessing.map(student => student.turmaId).filter(Boolean).map(String))];
   if (affectedClassIds.length) {
     classes = classes.map(turma => affectedClassIds.includes(String(turma.id))
       ? {
@@ -2636,8 +2812,8 @@ async function exportCertificates(payload) {
               ator: actor,
               perfil: actorRole,
               em: now,
-              quantidade: selected.filter(student => String(student.turmaId) === String(turma.id)).length,
-              detalhe: `${selected.length} certificado(s) processados em lote.`,
+              quantidade: approvedForProcessing.filter(student => String(student.turmaId) === String(turma.id)).length,
+              detalhe: `${approvedForProcessing.length} certificado(s) processados em lote.`,
             },
           ],
         }
@@ -2654,8 +2830,24 @@ async function exportCertificates(payload) {
     };
   }
 
-  const current = updatedById.get(String(selected[0].id)) || selected[0];
-  const pdf = await generateCertificatePdf(current, { signatureType });
+  const current = updatedById.get(String(baseSelected.id)) || baseSelected;
+  const currentCtx = confirmationByCourseId.get(String(current.cursoId || '').trim()) || certificateContext;
+  const pdf = await generateCertificatePdf(current, { signatureType, certificateContext: currentCtx });
+  if (shouldZip) {
+    const zip = new JSZip();
+    for (const student of approvedForProcessing) {
+      const certStudent = updatedById.get(String(student.id)) || student;
+      const certCtx = confirmationByCourseId.get(String(certStudent.cursoId || '').trim()) || certificateContext;
+      const certPdf = await generateCertificatePdf(certStudent, { signatureType, certificateContext: certCtx });
+      zip.file(certificateFileName(certStudent), certPdf);
+    }
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    return {
+      buffer: zipBuffer,
+      contentType: 'application/zip',
+      filename: `${sanitizeFileName(current.nome)}-todos-certificados.zip`,
+    };
+  }
   return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
 }
 
@@ -3244,7 +3436,11 @@ const server = createServer(async (req, res) => {
       badRequest(res, 'JSON invalido.');
       return;
     }
-    const result = await exportCertificates(body);
+    const result = await exportCertificates({
+      ...body,
+      actor: req.auth?.name || body.actor || 'Responsável DRM',
+      actorRole: req.auth?.role || body.actorRole || 'responsavel',
+    });
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;
