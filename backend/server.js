@@ -10,7 +10,6 @@ import JSZip from 'jszip';
 import {
   MOCK_STUDENTS,
   MOCK_COURSES,
-  CHART_DATA_MONTHLY,
 } from '../src/data/mockData.js';
 import { NR_CATALOG } from '../src/data/nrCatalog.js';
 import {
@@ -723,6 +722,50 @@ function dashboardFromData(studentsData = [], classesData = [], coursesData = []
     .sort((a, b) => b.id - a.id)
     .slice(0, 5);
 
+  const buildRealMonthlyChart = () => {
+    const now = new Date();
+    const buckets = [];
+    for (let i = 5; i >= 0; i -= 1) {
+      const ref = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      buckets.push({
+        key: `${ref.getFullYear()}-${String(ref.getMonth() + 1).padStart(2, '0')}`,
+        mes: ref.toLocaleDateString('pt-BR', { month: 'short' }).replace('.', ''),
+        alunos: 0,
+        certificados: 0,
+      });
+    }
+    const byKey = new Map(buckets.map(item => [item.key, item]));
+    const parseDate = (value) => {
+      if (!value) return null;
+      const raw = String(value);
+      const iso = new Date(raw);
+      if (!Number.isNaN(iso.getTime())) return iso;
+      const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+      if (br) {
+        const [, dd, mm, yyyy] = br;
+        const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+        return Number.isNaN(dt.getTime()) ? null : dt;
+      }
+      return null;
+    };
+
+    studentsData.forEach((student) => {
+      const alunoDate = parseDate(student.createdAt || student.data || student.periodoInicio || student.periodoFim);
+      if (alunoDate) {
+        const key = `${alunoDate.getFullYear()}-${String(alunoDate.getMonth() + 1).padStart(2, '0')}`;
+        if (byKey.has(key)) byKey.get(key).alunos += 1;
+      }
+      if (student.statusCertificado === 'aprovado') {
+        const certDate = parseDate(student.certificadoAutorizadoEm || student.updatedAt || student.data);
+        if (certDate) {
+          const key = `${certDate.getFullYear()}-${String(certDate.getMonth() + 1).padStart(2, '0')}`;
+          if (byKey.has(key)) byKey.get(key).certificados += 1;
+        }
+      }
+    });
+    return buckets;
+  };
+
   return {
     metrics: {
       totalAlunos,
@@ -733,7 +776,7 @@ function dashboardFromData(studentsData = [], classesData = [], coursesData = []
       totalCursos,
     },
     charts: {
-      monthly: CHART_DATA_MONTHLY,
+      monthly: buildRealMonthlyChart(),
     },
     pendingItems,
     recentStudents,
