@@ -244,6 +244,83 @@ let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? i
 let auditLogs = Array.isArray(initialData.auditLogs) ? initialData.auditLogs : [];
 let users = mergeEnvUsers(initialData.users || []);
 
+const LEGACY_COURSE_NAME_ALIASES = new Map([
+  ['NR-10 SEP - Segurança no Sistema Elétrico de Potência', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-35 - Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
+  ['NR-18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT'],
+]);
+
+const LEGACY_COURSE_CODE_ALIASES = new Map([
+  ['NR-10-SEP', 'NR-10'],
+]);
+
+function normalizeCourseNameByAlias(name = '') {
+  const value = String(name || '').trim();
+  return LEGACY_COURSE_NAME_ALIASES.get(value) || value;
+}
+
+function enforceCanonicalCourseNaming(payload = {}) {
+  const catalogByCode = new Map(
+    NR_CATALOG.map(item => [String(item.code || '').toUpperCase(), item]),
+  );
+
+  const normalizeCode = (value = '') => {
+    const raw = String(value || '').trim().toUpperCase();
+    return LEGACY_COURSE_CODE_ALIASES.get(raw) || raw;
+  };
+
+  const normalizeNameFromCode = (name = '', code = '') => {
+    const normalizedCode = normalizeCode(code);
+    const catalog = catalogByCode.get(normalizedCode);
+    if (catalog?.nomeCurso) return catalog.nomeCurso;
+    return normalizeCourseNameByAlias(name);
+  };
+
+  const coursesNext = (Array.isArray(payload.courses) ? payload.courses : []).map((course) => {
+    const normalizedCode = normalizeCode(course?.codigoCatalogo || '');
+    const normalizedName = normalizeNameFromCode(course?.nomeCurso || '', normalizedCode);
+    return {
+      ...course,
+      codigoCatalogo: normalizedCode || course?.codigoCatalogo || '',
+      nomeCurso: normalizedName,
+    };
+  });
+
+  const studentsNext = (Array.isArray(payload.students) ? payload.students : []).map((student) => {
+    const normalizedCode = normalizeCode(student?.codigoCatalogo || '');
+    const normalizedName = normalizeNameFromCode(student?.nomeCurso || '', normalizedCode);
+    const selectedNames = Array.isArray(student?.selectedCourseNames)
+      ? student.selectedCourseNames.map((name) => normalizeCourseNameByAlias(name))
+      : student?.selectedCourseNames;
+    return {
+      ...student,
+      codigoCatalogo: normalizedCode || student?.codigoCatalogo || '',
+      nomeCurso: normalizedName,
+      selectedCourseNames: selectedNames,
+    };
+  });
+
+  const classesNext = (Array.isArray(payload.classes) ? payload.classes : []).map((klass) => {
+    const normalizedCode = normalizeCode(klass?.codigoCatalogo || '');
+    return {
+      ...klass,
+      codigoCatalogo: normalizedCode || klass?.codigoCatalogo || '',
+      nomeCurso: normalizeNameFromCode(klass?.nomeCurso || '', normalizedCode),
+    };
+  });
+
+  return {
+    changed:
+      JSON.stringify(coursesNext) !== JSON.stringify(payload.courses || []) ||
+      JSON.stringify(studentsNext) !== JSON.stringify(payload.students || []) ||
+      JSON.stringify(classesNext) !== JSON.stringify(payload.classes || []),
+    courses: coursesNext,
+    students: studentsNext,
+    classes: classesNext,
+  };
+}
+
 function ensureCatalogCourses(existingCourses = []) {
   const normalized = Array.isArray(existingCourses) ? [...existingCourses] : [];
   const byCode = new Map(
@@ -261,7 +338,7 @@ function ensureCatalogCourses(existingCourses = []) {
     if (current) {
       const merged = {
         ...current,
-        nomeCurso: current.nomeCurso || catalogItem.nomeCurso,
+        nomeCurso: catalogItem.nomeCurso,
         descricao: current.descricao || catalogItem.descricao || '',
         duracao: current.duracao || catalogItem.duracao || '8 horas',
         codigoCatalogo: current.codigoCatalogo || code,
@@ -305,6 +382,10 @@ function ensureCatalogCourses(existingCourses = []) {
 
 const catalogSync = ensureCatalogCourses(courses);
 courses = catalogSync.courses;
+const namingSync = enforceCanonicalCourseNaming({ students, courses, classes });
+students = namingSync.students;
+courses = namingSync.courses;
+classes = namingSync.classes;
 
 function persistData() {
   const payload = { students, courses, classes, certificateSettings, certificateDrafts, companyChangeRequests, auditLogs, users };
@@ -323,7 +404,7 @@ function persistData() {
   });
 }
 
-if (catalogSync.changed) {
+if (catalogSync.changed || namingSync.changed) {
   persistData();
 }
 
