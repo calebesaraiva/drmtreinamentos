@@ -3,6 +3,8 @@ import { MOCK_STUDENTS, MOCK_COURSES } from '../data/mockData';
 import { api } from '../services/api';
 
 const AppContext = createContext(null);
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1 hora
+const LAST_ACTIVITY_KEY = 'drmLastActivityAt';
 
 function buildCertificateAuthorization(actorName = 'Responsável DRM') {
   const now = new Date();
@@ -73,6 +75,7 @@ export function AppProvider({ children }) {
   const [notifications, setNotifications] = useState([]);
   const [systemUsers, setSystemUsers] = useState([]);
   const businessLastSnapshotRef = useRef({ approved: 0, pending: 0, certs: 0 });
+  const idleTimeoutRef = useRef(null);
 
   useEffect(() => {
     api.setToken(localStorage.getItem('drmAuthToken') || '');
@@ -132,6 +135,7 @@ export function AppProvider({ children }) {
       setUser(result.user);
       localStorage.setItem('drmUser', JSON.stringify(result.user));
       api.setToken(result.token);
+      localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
       return { success: true, user: result.user };
     } catch (error) {
       const message = error?.message || 'Usuário ou senha inválidos.';
@@ -159,8 +163,63 @@ export function AppProvider({ children }) {
   const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('drmUser');
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
     api.setToken('');
   }, []);
+
+  useEffect(() => {
+    const clearIdleTimer = () => {
+      if (idleTimeoutRef.current) {
+        clearTimeout(idleTimeoutRef.current);
+        idleTimeoutRef.current = null;
+      }
+    };
+
+    if (!user) {
+      clearIdleTimer();
+      return undefined;
+    }
+
+    const markActivity = () => {
+      try {
+        localStorage.setItem(LAST_ACTIVITY_KEY, String(Date.now()));
+      } catch {
+        // noop
+      }
+      clearIdleTimer();
+      idleTimeoutRef.current = setTimeout(() => {
+        logout();
+      }, IDLE_TIMEOUT_MS);
+    };
+
+    const enforceIdleOnVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const last = Number(localStorage.getItem(LAST_ACTIVITY_KEY) || Date.now());
+        if (Date.now() - last > IDLE_TIMEOUT_MS) {
+          logout();
+          return;
+        }
+      } catch {
+        // noop
+      }
+      markActivity();
+    };
+
+    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((eventName) => window.addEventListener(eventName, markActivity, { passive: true }));
+    document.addEventListener('visibilitychange', enforceIdleOnVisibility);
+    window.addEventListener('focus', enforceIdleOnVisibility);
+
+    markActivity();
+
+    return () => {
+      clearIdleTimer();
+      events.forEach((eventName) => window.removeEventListener(eventName, markActivity));
+      document.removeEventListener('visibilitychange', enforceIdleOnVisibility);
+      window.removeEventListener('focus', enforceIdleOnVisibility);
+    };
+  }, [user, logout]);
 
   // Courses
   const addCourse = useCallback(async (course) => {
@@ -477,12 +536,12 @@ export function AppProvider({ children }) {
     }
   }, [addNotification, user]);
 
-  const updateStudentStatus = useCallback(async (studentId, field, value, motivo = null) => {
+  const updateStudentStatus = useCallback(async (studentId, field, value, motivo = null, extra = {}) => {
     const actorName = user?.name || 'Responsável DRM';
     const actorRole = user?.role || 'responsavel';
 
     try {
-      const updatedStudent = await api.updateStudentStatus(studentId, field, value, motivo, actorName, actorRole);
+      const updatedStudent = await api.updateStudentStatus(studentId, field, value, motivo, actorName, actorRole, extra);
       setStudents(prev => prev.map(s => (s.id === studentId ? updatedStudent : s)));
       setApiError(null);
       if (field === 'statusCertificado' && value === 'aprovado') {
