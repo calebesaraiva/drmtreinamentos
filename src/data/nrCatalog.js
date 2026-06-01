@@ -9,7 +9,6 @@ export const NR_CATALOG = [
   { code: 'NR-08', nomeCurso: 'NR-08 - Edificações', duracao: '4 horas', descricao: 'Requisitos mínimos de segurança em edificações e ambientes de trabalho.' },
   { code: 'NR-09', nomeCurso: 'NR-09 - Avaliação e Controle de Exposições Ocupacionais', duracao: '8 horas', descricao: 'Identificação, avaliação e controle de agentes físicos, químicos e biológicos.' },
   { code: 'NR-10', nomeCurso: 'NR-10 - Segurança em Instalações e Serviços em Eletricidade', duracao: '40 horas', descricao: 'Segurança em eletricidade para trabalhadores autorizados, conforme NR-10.' },
-  { code: 'NR-10-SEP', nomeCurso: 'NR-10 SEP - Segurança no Sistema Elétrico de Potência', duracao: '40 horas', descricao: 'Capacitação complementar para atuação em SEP e proximidades com técnicas de controle de risco.' },
   { code: 'NR-11', nomeCurso: 'NR-11 - Transporte, Movimentação, Armazenagem e Manuseio de Materiais', duracao: '8 horas', descricao: 'Boas práticas e segurança para movimentação e armazenagem de materiais.' },
   { code: 'NR-11-EMP', nomeCurso: 'NR-11 - Operador de Empilhadeira', duracao: '16 horas', descricao: 'Operação segura de empilhadeiras, inspeção diária e prevenção de acidentes operacionais.' },
   { code: 'NR-11-PONTE', nomeCurso: 'NR-11 - Operador de Ponte Rolante', duracao: '16 horas', descricao: 'Procedimentos seguros para operação, sinalização e movimentação de cargas em ponte rolante.' },
