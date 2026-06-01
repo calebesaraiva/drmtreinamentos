@@ -185,8 +185,15 @@ function AutorizaCadastroModal({
   useEffect(() => {
     if (!isOpen || !aluno) return;
     const currentCourseId = String(aluno.cursoId || '');
+    const existingIds = Array.isArray(aluno.cursosConcluidosIds)
+      ? aluno.cursosConcluidosIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
     setFilial(String(aluno.filial || rememberedFilial || ''));
-    setSelectedCourses(currentCourseId ? [currentCourseId] : []);
+    if (existingIds.length > 0) {
+      setSelectedCourses(existingIds);
+    } else {
+      setSelectedCourses(currentCourseId ? [currentCourseId] : []);
+    }
   }, [isOpen, aluno, rememberedFilial]);
 
   const toggleCourse = (courseId) => {
@@ -248,6 +255,126 @@ function AutorizaCadastroModal({
           >
             {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
             Confirmar autorização
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function EditarAlunoCursoModal({ isOpen, onClose, onConfirm, aluno, courses, loading }) {
+  const [nome, setNome] = useState('');
+  const [cpf, setCpf] = useState('');
+  const [empresa, setEmpresa] = useState('');
+  const [filial, setFilial] = useState('');
+  const [local, setLocal] = useState('');
+  const [data, setData] = useState('');
+  const [duracao, setDuracao] = useState('');
+  const [horarioInicio, setHorarioInicio] = useState('');
+  const [selectedCourses, setSelectedCourses] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen || !aluno) return;
+    const existingIds = Array.isArray(aluno.cursosConcluidosIds)
+      ? aluno.cursosConcluidosIds.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const currentCourseId = String(aluno.cursoId || '').trim();
+    setNome(String(aluno.nome || '').trim());
+    setCpf(String(aluno.cpf || '').trim());
+    setEmpresa(String(aluno.empresa || '').trim());
+    setFilial(String(aluno.filial || '').trim());
+    setLocal(String(aluno.local || '').trim());
+    setData(String(aluno.data || '').trim());
+    setDuracao(String(aluno.duracao || '').trim());
+    setHorarioInicio(String(aluno.horarioInicio || '').trim());
+    setSelectedCourses(existingIds.length > 0 ? existingIds : (currentCourseId ? [currentCourseId] : []));
+  }, [isOpen, aluno]);
+
+  const toggleCourse = (courseId) => {
+    const id = String(courseId || '');
+    setSelectedCourses((prev) => (
+      prev.includes(id)
+        ? prev.filter((item) => item !== id)
+        : [...prev, id]
+    ));
+  };
+
+  const canConfirm = nome.trim() && cpf.trim() && empresa.trim() && filial.trim() && selectedCourses.length > 0;
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Editar aluno e cursos" size="lg">
+      <div className="space-y-4">
+        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-blue-800">
+          Você pode editar os dados antes da emissão. Após emitir certificado, a edição deste curso fica bloqueada.
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Nome *</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">CPF *</label>
+            <input value={cpf} onChange={(e) => setCpf(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Empresa *</label>
+            <input value={empresa} onChange={(e) => setEmpresa(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Filial *</label>
+            <input value={filial} onChange={(e) => setFilial(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-semibold text-gray-700">Local</label>
+            <input value={local} onChange={(e) => setLocal(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Data</label>
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div>
+            <label className="text-sm font-semibold text-gray-700">Carga horária</label>
+            <input value={duracao} onChange={(e) => setDuracao(e.target.value)} className="input-field mt-1" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="text-sm font-semibold text-gray-700">Hora início</label>
+            <input value={horarioInicio} onChange={(e) => setHorarioInicio(e.target.value)} className="input-field mt-1" placeholder="08:00" />
+          </div>
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-gray-700 mb-2">Cursos do aluno *</p>
+          <div className="max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2 space-y-2">
+            {(Array.isArray(courses) ? courses : []).map((course) => {
+              const id = String(course.id || '');
+              const checked = selectedCourses.includes(id);
+              return (
+                <label key={`edit-course-${id}`} className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-gray-50 cursor-pointer">
+                  <input type="checkbox" checked={checked} onChange={() => toggleCourse(id)} />
+                  <span className="text-sm text-gray-800">{safeText(course.nomeCurso, 'Curso sem nome')}</span>
+                </label>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex gap-2 justify-end">
+          <button type="button" onClick={onClose} className="btn-secondary text-sm">Cancelar</button>
+          <button
+            type="button"
+            onClick={() => onConfirm({
+              nome: nome.trim(),
+              cpf: cpf.trim(),
+              empresa: empresa.trim(),
+              filial: filial.trim(),
+              local: local.trim(),
+              data: data.trim(),
+              duracao: duracao.trim(),
+              horarioInicio: horarioInicio.trim(),
+              cursosConcluidos: selectedCourses,
+            })}
+            disabled={!canConfirm || loading}
+            className="btn-primary text-sm disabled:opacity-60"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Salvar alterações'}
           </button>
         </div>
       </div>
@@ -1111,6 +1238,7 @@ export default function AnalisePage() {
   const [downloadModalAluno, setDownloadModalAluno] = useState(null);
   const [pdfSelectAluno, setPdfSelectAluno] = useState(null);
   const [downloadActionType, setDownloadActionType] = useState('pdf');
+  const [editaAlunoModal, setEditaAlunoModal] = useState(null);
   const [quickEmissionConfig, setQuickEmissionConfig] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('drmQuickEmissionConfig') || 'null');
@@ -1251,8 +1379,8 @@ export default function AnalisePage() {
   };
 
   const handleAprovarCadastro = async (aluno) => {
-    const existingCourses = Array.isArray(aluno?.cursosConcluidos)
-      ? aluno.cursosConcluidos.map((item) => String(item || '').trim()).filter(Boolean)
+    const existingCourses = Array.isArray(aluno?.cursosConcluidosIds)
+      ? aluno.cursosConcluidosIds.map((item) => String(item || '').trim()).filter(Boolean)
       : [];
     const rememberedFilial = filialByEmpresa[String(aluno?.empresa || '').trim().toLowerCase()] || '';
     const existingFilial = String(aluno?.filial || rememberedFilial || '').trim();
@@ -1273,6 +1401,18 @@ export default function AnalisePage() {
     }
 
     setAutorizaCadastroAluno(aluno);
+  };
+
+  const handleSalvarEdicaoAluno = async (payload) => {
+    if (!editaAlunoModal?.id) return;
+    setProcessing(`${editaAlunoModal.id}:edit`);
+    try {
+      await api.updateStudentProfile(editaAlunoModal.id, payload);
+      await refreshData();
+      setEditaAlunoModal(null);
+    } finally {
+      setProcessing(null);
+    }
   };
 
   const handleConfirmAutorizaCadastro = async (payload) => {
@@ -1616,6 +1756,7 @@ export default function AnalisePage() {
                     && Array.isArray(aluno.cursosConcluidos)
                     && aluno.cursosConcluidos.length > 0;
                   const isFullyApproved = aluno.statusCadastro === 'aprovado' && aluno.statusCertificado === 'aprovado';
+                  const isLockedAfterEmission = Boolean(aluno.certificadoChecklistConfirmadoEm || aluno.certificadoEnviado);
                   return (
                     <div key={aluno.id} className="rounded-lg border border-gray-200 p-3">
                       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
@@ -1627,6 +1768,15 @@ export default function AnalisePage() {
                           </p>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          {!isLockedAfterEmission && (
+                            <button
+                              onClick={() => setEditaAlunoModal(aluno)}
+                              disabled={isProcessing}
+                              className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-60"
+                            >
+                              Editar dados/curso
+                            </button>
+                          )}
                           {aluno.statusCadastro === 'pendente' && (
                             <button
                               onClick={() => handleAprovarCadastro(aluno)}
@@ -1724,6 +1874,14 @@ export default function AnalisePage() {
         courses={courses}
         loading={processing === `${autorizaCadastroAluno?.id}:statusCadastro`}
         rememberedFilial={filialByEmpresa[String(autorizaCadastroAluno?.empresa || '').trim().toLowerCase()] || ''}
+      />
+      <EditarAlunoCursoModal
+        isOpen={Boolean(editaAlunoModal)}
+        onClose={() => setEditaAlunoModal(null)}
+        onConfirm={handleSalvarEdicaoAluno}
+        aluno={editaAlunoModal}
+        courses={courses}
+        loading={processing === `${editaAlunoModal?.id}:edit`}
       />
 
       <AutorizaCertificadoModal

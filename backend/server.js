@@ -2592,31 +2592,117 @@ function updateStudentProfile(id, payload = {}) {
   if (index === -1) return { status: 404, error: 'Aluno nao encontrado.' };
 
   const student = students[index];
+  const sameCpfRecords = students.filter(item => String(item.cpf || '').replace(/\D/g, '') === String(student.cpf || '').replace(/\D/g, ''));
+  const editableRecords = sameCpfRecords.filter((item) => !item.certificadoChecklistConfirmadoEm && !item.certificadoEnviado);
+  if (editableRecords.length === 0) {
+    return { status: 409, error: 'Este aluno já possui certificado emitido. Edição bloqueada para manter integridade.' };
+  }
+
   const nextNome = payload.nome !== undefined ? String(payload.nome || '').trim() : String(student.nome || '').trim();
   const nextCpfRaw = payload.cpf !== undefined ? String(payload.cpf || '').trim() : String(student.cpf || '').trim();
   const nextCpfDigits = nextCpfRaw.replace(/\D/g, '');
+  const nextEmpresa = payload.empresa !== undefined ? String(payload.empresa || '').trim() : String(student.empresa || '').trim();
+  const nextFilial = payload.filial !== undefined ? String(payload.filial || '').trim() : String(student.filial || '').trim();
+  const nextLocal = payload.local !== undefined ? String(payload.local || '').trim() : String(student.local || '').trim();
+  const nextData = payload.data !== undefined ? String(payload.data || '').trim() : String(student.data || '').trim();
+  const nextDuracao = payload.duracao !== undefined ? String(payload.duracao || '').trim() : String(student.duracao || '').trim();
+  const nextHorarioInicio = payload.horarioInicio !== undefined ? String(payload.horarioInicio || '').trim() : String(student.horarioInicio || '').trim();
 
-  if (!nextNome || !nextCpfDigits) {
-    return { status: 400, error: 'Nome e CPF são obrigatórios.' };
+  if (!nextNome || !nextCpfDigits || !nextEmpresa || !nextFilial) {
+    return { status: 400, error: 'Nome, CPF, empresa e filial são obrigatórios.' };
   }
 
-  const duplicate = students.find(item => (
-    String(item.id) !== String(id) &&
-    String(item.cursoId) === String(student.cursoId) &&
-    String(item.cpf || '').replace(/\D/g, '') === nextCpfDigits
+  const selectedCourseIds = Array.isArray(payload.cursosConcluidos)
+    ? payload.cursosConcluidos.map((item) => String(item || '').trim()).filter(Boolean)
+    : [];
+  if (selectedCourseIds.length === 0) {
+    return { status: 400, error: 'Selecione ao menos 1 curso para este aluno.' };
+  }
+  const selectedCourses = selectedCourseIds
+    .map((courseId) => normalizeCourse(courses.find(item => String(item.id) === String(courseId)) || {}))
+    .filter((course) => course.id);
+  if (selectedCourses.length === 0) {
+    return { status: 400, error: 'Nenhum curso válido foi selecionado.' };
+  }
+  const selectedNames = selectedCourses.map((course) => course.nomeCurso);
+
+  const duplicateByCourse = students.find(item => (
+    String(item.cpf || '').replace(/\D/g, '') === nextCpfDigits &&
+    !sameCpfRecords.some((current) => String(current.id) === String(item.id)) &&
+    selectedCourseIds.includes(String(item.cursoId || ''))
   ));
-  if (duplicate) {
-    return { status: 409, error: 'CPF já cadastrado neste curso para outro aluno.' };
+  if (duplicateByCourse) return { status: 409, error: 'Já existe outro aluno com este CPF em um dos cursos selecionados.' };
+
+  const now = new Date().toISOString();
+  const currentByCourse = new Map(sameCpfRecords.map((item) => [String(item.cursoId || ''), item]));
+  const removableIds = new Set(
+    editableRecords
+      .filter((item) => !selectedCourseIds.includes(String(item.cursoId || '')))
+      .map((item) => String(item.id)),
+  );
+
+  const additions = [];
+  for (const course of selectedCourses) {
+    const courseId = String(course.id || '');
+    const existing = currentByCourse.get(courseId);
+    if (existing) continue;
+    additions.push({
+      id: randomUUID(),
+      nome: nextNome,
+      cpf: nextCpfRaw,
+      empresa: nextEmpresa,
+      email: String(student.email || ''),
+      telefone: String(student.telefone || ''),
+      cargoFuncao: String(student.cargoFuncao || ''),
+      presenca: Number(student.presenca || 100),
+      notaProva: Number(student.notaProva || 10),
+      presente: student.presente !== false,
+      turmaId: student.turmaId || null,
+      filial: nextFilial,
+      cursosConcluidos: selectedNames,
+      cursosConcluidosIds: selectedCourseIds,
+      statusCadastro: 'aprovado',
+      statusCertificado: 'pendente',
+      certificadoEnviado: false,
+      motivoRecusa: null,
+      local: nextLocal || 'A definir',
+      data: nextData || student.data || '',
+      duracao: nextDuracao || student.duracao || '8 horas',
+      horarioInicio: nextHorarioInicio || student.horarioInicio || '08:00',
+      cursoId: course.id,
+      nomeCurso: course.nomeCurso,
+      qrCode: course.qrCode,
+      createdAt: now,
+      updatedAt: now,
+    });
   }
 
-  students[index] = {
-    ...student,
-    nome: nextNome,
-    cpf: nextCpfRaw,
-    updatedAt: new Date().toISOString(),
-  };
+  students = students
+    .filter((item) => !removableIds.has(String(item.id)))
+    .map((item) => {
+      if (String(item.cpf || '').replace(/\D/g, '') !== String(student.cpf || '').replace(/\D/g, '')) return item;
+      if (item.certificadoChecklistConfirmadoEm || item.certificadoEnviado) return item;
+      return {
+        ...item,
+        nome: nextNome,
+        cpf: nextCpfRaw,
+        empresa: nextEmpresa,
+        filial: nextFilial,
+        local: nextLocal || item.local || 'A definir',
+        data: nextData || item.data,
+        duracao: nextDuracao || item.duracao,
+        horarioInicio: nextHorarioInicio || item.horarioInicio,
+        cursosConcluidos: selectedNames,
+        cursosConcluidosIds: selectedCourseIds,
+        updatedAt: now,
+      };
+    });
+  students.push(...additions);
+
   persistData();
-  return { student: students[index] };
+  const updatedRef = students.find((item) => String(item.id) === String(id))
+    || students.find((item) => String(item.cpf || '').replace(/\D/g, '') === nextCpfDigits);
+  return { student: updatedRef };
 }
 
 function deleteTestClass(id, payload = {}) {
