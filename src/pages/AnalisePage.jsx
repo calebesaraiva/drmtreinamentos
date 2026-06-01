@@ -812,6 +812,25 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         </div>
         <div>
           <p className="text-sm font-semibold text-gray-700 mb-2">Cursos para emissão</p>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={saveDraftFromCurrent}
+              className="btn-secondary text-xs"
+              disabled={!current || current.locked || draftBusy}
+            >
+              {draftBusy ? 'Salvando...' : 'Salvar rascunho'}
+            </button>
+            <button
+              type="button"
+              onClick={applyDraftToCurrent}
+              className="btn-secondary text-xs"
+              disabled={!current || current.locked || draftBusy}
+            >
+              {draftBusy ? 'Carregando...' : 'Usar rascunho'}
+            </button>
+            {draftStatus ? <span className="text-xs text-amber-800">{draftStatus}</span> : null}
+          </div>
           <div className="mb-2 flex gap-2">
             <select
               value={courseToAdd}
