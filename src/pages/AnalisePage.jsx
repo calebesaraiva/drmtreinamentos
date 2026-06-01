@@ -824,14 +824,10 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Confirmar emissão do certificado" size="md">
       <div className="space-y-4">
-        <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm text-blue-800">
-          Selecione/confirme cursos e preencha o checklist de cada curso (um por vez).
-        </div>
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
-          <p><strong>Aluno:</strong> {safeText(aluno?.nome)}</p>
-        </div>
         <div>
-          <p className="text-sm font-semibold text-gray-700 mb-2">Cursos para emissão</p>
+          <p className="text-sm font-semibold text-gray-700 mb-2">
+            Cursos para emissão - {safeText(aluno?.nome)}
+          </p>
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
