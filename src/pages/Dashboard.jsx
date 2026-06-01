@@ -216,6 +216,8 @@ export default function Dashboard() {
   const [recentDetailStudent, setRecentDetailStudent] = useState(null);
   const [chartRange, setChartRange] = useState('6m');
   const [dashboardUpdatedAt, setDashboardUpdatedAt] = useState(new Date());
+  const hasCompanyRequestsApi = typeof api?.getCompanyChangeRequests === 'function'
+    && typeof api?.createCompanyChangeRequest === 'function';
 
   useEffect(() => {
     let ignore = false;
@@ -243,8 +245,12 @@ export default function Dashboard() {
     };
   }, [students, courses]);
   useEffect(() => {
+    if (!hasCompanyRequestsApi) {
+      setQuickClientRequests([]);
+      return;
+    }
     api.getCompanyChangeRequests().then(setQuickClientRequests).catch(() => setQuickClientRequests([]));
-  }, []);
+  }, [hasCompanyRequestsApi]);
 
   const fallbackData = useMemo(() => buildDashboardFallback(students, courses), [students, courses]);
   const dashboard = dashboardData || fallbackData;
@@ -405,7 +411,11 @@ export default function Dashboard() {
       setQuickClientAction('');
       setQuickClientReason('');
       setQuickClientDataForm({ contato: '', email: '', telefone: '' });
-      api.getCompanyChangeRequests().then(setQuickClientRequests).catch(() => setQuickClientRequests([]));
+      if (hasCompanyRequestsApi) {
+        api.getCompanyChangeRequests().then(setQuickClientRequests).catch(() => setQuickClientRequests([]));
+      } else {
+        setQuickClientRequests([]);
+      }
     }
   };
 
@@ -421,6 +431,10 @@ export default function Dashboard() {
   };
 
   const submitClientChangeRequest = async () => {
+    if (!hasCompanyRequestsApi) {
+      setQuickStatus({ type: 'error', text: 'Atualize o sistema. Este recurso de solicitações da empresa não está disponível nesta versão.' });
+      return;
+    }
     if (!quickClientDetail) return;
     if (!quickClientAction) {
       setQuickStatus({ type: 'error', text: 'Selecione uma ação: trocar senha ou alterar dados.' });
