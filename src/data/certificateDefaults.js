@@ -36,7 +36,7 @@ export const defaultCertificateConfig = {
   conteudoTitulo: 'CONTEÚDO PROGRAMÁTICO',
   conteudoSubtitulo: '{curso}',
   conteudoProgramatico: '1. Objetivo e aplicação do treinamento;\n2. Requisitos legais e responsabilidades;\n3. Identificação de riscos e medidas de controle;\n4. Procedimentos seguros de trabalho;\n5. Equipamentos de proteção coletiva e individual;\n6. Condições impeditivas e análise preliminar de risco;\n7. Rotinas operacionais e documentação;\n8. Medidas preventivas e resposta a emergências;\n9. Avaliação de aprendizagem;\n10. Encerramento e orientações finais;',
-  textoRodape: 'Certificado emitido pela DR Treinamentos e Consultoria. A autenticidade deve ser confirmada nos registros internos da empresa.',
+  textoRodape: 'Certificado emitido pela DRM Treinamentos e Consultoria. A autenticidade deve ser confirmada nos registros internos da empresa.',
   validadeAnos: '2',
   logoUrl: '',
   logoName: '',
@@ -68,6 +68,9 @@ function normalizeCertificateConfig(config = {}) {
 
   if (/^DR\s+TREINAMENTOS\b/i.test(companyName)) {
     nextConfig.nomeEmpresa = companyName.replace(/^DR\s+TREINAMENTOS\b/i, 'DRM TREINAMENTOS');
+  }
+  if (typeof nextConfig.textoRodape === 'string' && /DR\s*Treinamentos/i.test(nextConfig.textoRodape)) {
+    nextConfig.textoRodape = nextConfig.textoRodape.replace(/DR\s*Treinamentos/gi, 'DRM Treinamentos');
   }
 
   return {
