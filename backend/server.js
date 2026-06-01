@@ -2823,11 +2823,10 @@ async function exportCertificates(payload) {
     const effectiveCtx = byCourseCtx || (certificateContext ? normalizeCertificateContext(certificateContext) : null);
     if (!effectiveCtx) continue;
     const lockChecklist = effectiveCtx.lockChecklist !== false;
-    if (!lockChecklist && student.certificadoChecklistLocked) continue;
     updatedById.set(String(student.id), {
       ...student,
-      certificadoChecklistLocked: lockChecklist ? true : Boolean(student.certificadoChecklistLocked),
-      certificadoChecklistConfirmadoEm: lockChecklist ? now : (student.certificadoChecklistConfirmadoEm || now),
+      certificadoChecklistLocked: lockChecklist ? true : false,
+      certificadoChecklistConfirmadoEm: now,
       certificadoChecklistLocal: String(effectiveCtx.local || '').trim(),
       certificadoChecklistData: String(effectiveCtx.data || '').trim(),
       certificadoChecklistDuracao: String(effectiveCtx.duracao || '').trim(),

@@ -483,8 +483,8 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         item.certificadoChecklistConteudoProgramatico
           || resolveCourseProgramContent(item.cursoId, '')
       ).trim(),
-      locked: Boolean(item.certificadoChecklistLocked),
-      confirmed: Boolean(item.certificadoChecklistLocked),
+      locked: false,
+      confirmed: false,
       needsReconfirm: false,
     })));
     setStepIndex(0);
@@ -802,7 +802,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
             <div className="flex items-center justify-between">
               <button type="button" onClick={() => setStepIndex(Math.max(0, stepIndex - 1))} className="btn-secondary text-xs" disabled={stepIndex === 0}>Curso anterior</button>
               <button type="button" onClick={confirmCurrent} className="btn-primary text-xs" disabled={!canAdvance || current.confirmed}>
-                {current.locked ? 'Checklist travado' : current.confirmed ? 'Curso confirmado' : 'Confirmar este curso'}
+                {current.confirmed ? 'Curso confirmado' : 'Confirmar este curso'}
               </button>
               <button type="button" onClick={() => setStepIndex(Math.min(activeForms.length - 1, stepIndex + 1))} className="btn-secondary text-xs" disabled={stepIndex >= activeForms.length - 1}>Próximo curso</button>
             </div>
@@ -881,7 +881,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
                   periodoFim: String(item.periodoFim || item.data || '').trim(),
                   textoCertificado: String(item.textoCertificado || '').trim(),
                   conteudoProgramatico: String(item.conteudoProgramatico || '').trim(),
-                  lockChecklist: true,
+                  lockChecklist: false,
                   temInstrutor,
                   instrutorNome: instrutorNome.trim(),
                   instrutorCargo: instrutorCargo.trim(),
