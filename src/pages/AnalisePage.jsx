@@ -232,7 +232,7 @@ function CursosAlunoAcaoModal({ isOpen, onClose, group, onAbrirChecklist, onBaix
                 Cadastro: {safeText(item.statusCadastro)} • Certificado: {safeText(item.statusCertificado)}
               </p>
               <div className="flex justify-end mt-2">
-                {item.statusCertificado === 'aprovado' ? (
+                {(item.statusCertificado === 'aprovado' || item.certificadoChecklistConfirmadoEm) ? (
                   <button type="button" className="btn-secondary text-xs" onClick={() => onBaixarPdf(item)}>
                     <Download className="w-3.5 h-3.5" />
                     Baixar PDF
@@ -1880,7 +1880,7 @@ export default function AnalisePage() {
                               Autorizar cadastro
                             </button>
                           )}
-                          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && (
+                          {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && !isLockedAfterEmission && (
                             <button
                               onClick={() => {
                                 setCursoAcaoGroup(group);
@@ -1891,7 +1891,7 @@ export default function AnalisePage() {
                               Checklist e emitir
                             </button>
                           )}
-                          {aluno.statusCertificado === 'aprovado' && (
+                          {(aluno.statusCertificado === 'aprovado' || isLockedAfterEmission) && (
                             <>
                               <button onClick={() => handleDownloadPdf(aluno)} className="btn-secondary text-xs py-1.5 px-3">
                                 <Download className="w-3.5 h-3.5" />
