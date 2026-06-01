@@ -2661,8 +2661,10 @@ function updateStudentProfile(id, payload = {}) {
       filial: nextFilial,
       cursosConcluidos: selectedNames,
       cursosConcluidosIds: selectedCourseIds,
-      statusCadastro: 'aprovado',
-      statusCertificado: 'pendente',
+      // Mantém o mesmo estágio do fluxo do registro original.
+      // Isso evita "sumir" da aba atual após edição de cursos.
+      statusCadastro: String(student.statusCadastro || 'pendente'),
+      statusCertificado: String(student.statusCertificado || 'pendente'),
       certificadoEnviado: false,
       motivoRecusa: null,
       local: nextLocal || 'A definir',
