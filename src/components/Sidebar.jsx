@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Users, ClipboardCheck,
   Send, Settings, BarChart3, LogOut, X, ListChecks,
-  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2, ListTodo, Search, ShieldCheck
+  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2, ListTodo, Search, ShieldCheck, ClipboardList
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import BrandLogo from './BrandLogo';
@@ -25,6 +25,7 @@ const navItems = [
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/usuarios', icon: UserCog, label: 'Usuários', visibleRoles: ['admin', 'responsavel'] },
   { to: '/auditoria', icon: ShieldCheck, label: 'Auditoria', visibleRoles: ['admin', 'responsavel'] },
+  { to: '/conferencia', icon: ClipboardList, label: 'Conferência', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/empresas-clientes', icon: Building2, label: 'Empresas clientes', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/configuracoes', icon: Settings, label: 'Configurações', visibleRoles: ['admin', 'responsavel', 'usuario'] },
 ];
@@ -93,18 +94,16 @@ export default function Sidebar() {
           <p className="px-4 text-xs font-semibold text-blue-400 uppercase tracking-wider mb-2">Menu</p>
           {navItems
             .filter(item => !Array.isArray(item.visibleRoles) || item.visibleRoles.includes(role))
-            .map(({ to, icon: Icon, label, highlight }) => (
+            .map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}
               onClick={() => setSidebarOpen(false)}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-4 py-2.5 mx-2 rounded-lg text-sm transition-all duration-200 group ${
-                  highlight
-                    ? 'text-white bg-blue-800/70 hover:bg-blue-700 border border-blue-700/70'
-                    : isActive
-                    ? 'bg-blue-700 text-white shadow-sm'
-                    : 'text-blue-200 hover:bg-blue-800 hover:text-white'
+                  isActive
+                    ? 'bg-orange-500 text-white shadow-sm'
+                    : 'text-blue-200 hover:bg-blue-800/70 hover:text-white'
                 }`
               }
             >

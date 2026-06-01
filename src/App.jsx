@@ -24,6 +24,7 @@ import PendenciasPage from './pages/PendenciasPage';
 import BuscaGlobalPage from './pages/BuscaGlobalPage';
 import PrimeiroAcessoPage from './pages/PrimeiroAcessoPage';
 import AuditoriaPage from './pages/AuditoriaPage';
+import ConferenciaPage from './pages/ConferenciaPage';
 
 export default function App() {
   return (
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="empresario-historico" element={<EmpresarioHistoricoPage />} />
             <Route path="configuracoes" element={<ConfiguracoesPage />} />
             <Route path="auditoria" element={<AuditoriaPage />} />
+            <Route path="conferencia" element={<ConferenciaPage />} />
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

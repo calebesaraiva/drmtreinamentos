@@ -19,6 +19,7 @@ const PAGE_TITLES = {
   '/relatorios': 'Relatórios e Análises',
   '/usuarios': 'Usuários',
   '/auditoria': 'Auditoria e LGPD',
+  '/conferencia': 'Conferência de Alunos',
   '/empresas-clientes': 'Empresas Clientes',
   '/pre-cadastro-empresarial': 'Pré-cadastro Empresarial',
   '/empresario-historico': 'Cursos e Histórico',
