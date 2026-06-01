@@ -108,6 +108,15 @@ export const api = {
     method: 'DELETE',
   }),
   getDashboard: () => request('/api/dashboard'),
+  getAuditLogs: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      qs.set(key, String(value));
+    });
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return request(`/api/audit-logs${suffix}`);
+  },
   getStudents: () => request('/api/students'),
   getCourses: () => request('/api/courses'),
   getClasses: () => request('/api/classes'),

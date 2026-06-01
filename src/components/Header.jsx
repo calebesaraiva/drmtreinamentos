@@ -18,6 +18,7 @@ const PAGE_TITLES = {
   '/certificados': 'Enviar Certificados',
   '/relatorios': 'Relatórios e Análises',
   '/usuarios': 'Usuários',
+  '/auditoria': 'Auditoria e LGPD',
   '/empresas-clientes': 'Empresas Clientes',
   '/pre-cadastro-empresarial': 'Pré-cadastro Empresarial',
   '/empresario-historico': 'Cursos e Histórico',

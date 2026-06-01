@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, QrCode, Users, ClipboardCheck,
   Send, Settings, BarChart3, LogOut, X, ListChecks,
-  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2, ListTodo, Search
+  ChevronRight, BookOpenCheck, UserPlus, UserCog, Building2, ListTodo, Search, ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import BrandLogo from './BrandLogo';
@@ -24,6 +24,7 @@ const navItems = [
   { to: '/certificados', icon: Send, label: 'Enviar Certificados', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/relatorios', icon: BarChart3, label: 'Relatórios', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/usuarios', icon: UserCog, label: 'Usuários', visibleRoles: ['admin', 'responsavel'] },
+  { to: '/auditoria', icon: ShieldCheck, label: 'Auditoria', visibleRoles: ['admin', 'responsavel'] },
   { to: '/empresas-clientes', icon: Building2, label: 'Empresas clientes', visibleRoles: ['admin', 'responsavel', 'usuario'] },
   { to: '/configuracoes', icon: Settings, label: 'Configurações', visibleRoles: ['admin', 'responsavel', 'usuario'] },
 ];
