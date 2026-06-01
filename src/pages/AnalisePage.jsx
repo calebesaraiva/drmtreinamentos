@@ -44,10 +44,29 @@ function formatDateBR(value) {
 }
 
 function buildCertificatePreviewText({ nome, cpf, nomeCurso, duracao, local, periodoInicio, periodoFim }) {
+  const normalizeDuracao = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const lower = raw.toLowerCase();
+    if (lower === 'carga horaria' || lower === 'carga horária') return '';
+    if (/\bhora(s)?\b/i.test(raw)) return raw;
+    if (/^\d+([.,]\d+)?$/.test(raw)) return `${raw} horas`;
+    return raw;
+  };
+  const normalizeLocal = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    if (/^a definir$/i.test(raw)) return '';
+    if (/^local pendente$/i.test(raw)) return '';
+    return raw;
+  };
+
   const inicio = formatDateBR(periodoInicio);
   const fim = formatDateBR(periodoFim);
-  const periodo = inicio && fim ? (inicio === fim ? inicio : `${inicio} a ${fim}`) : (fim || inicio || 'data pendente');
-  return `Certificamos que ${safeText(nome, 'ALUNO')}, portador(a) do CPF ${safeText(cpf, '000.000.000-00')}, concluiu com aproveitamento satisfatório o treinamento ${safeText(nomeCurso, 'CURSO')}, com carga horária de ${safeText(duracao, 'carga horária pendente')}, realizado em ${safeText(local, 'local pendente')}, no período de ${periodo}, em conformidade com os requisitos aplicáveis.`;
+  const periodo = inicio && fim ? (inicio === fim ? inicio : `${inicio} a ${fim}`) : (fim || inicio || '');
+  const cargaHoraria = normalizeDuracao(duracao) || '8 horas';
+  const localCurso = normalizeLocal(local) || 'Unidade da empresa';
+  return `Certificamos que ${safeText(nome, 'ALUNO')}, portador(a) do CPF ${safeText(cpf, '000.000.000-00')}, concluiu com aproveitamento satisfatório o treinamento ${safeText(nomeCurso, 'CURSO')}, com carga horária de ${cargaHoraria}, realizado em ${localCurso}, no período de ${periodo || formatDateBR(new Date())}, em conformidade com os requisitos aplicáveis.`;
 }
 
 function RecusaModal({ isOpen, onClose, onConfirm, nome, tipo, loading }) {
@@ -768,6 +787,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       return;
     }
     const courseIdKey = String(current.cursoId || '').trim();
+    const textoNormalizado = buildAutoTextForForm(current);
     const payload = {
       cursoId: courseIdKey,
       cursoNome: current.cursoNome,
@@ -785,7 +805,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       horarioInicio: String(current.horarioInicio || '').trim(),
       periodoInicio: String(current.periodoInicio || current.data || '').trim(),
       periodoFim: String(current.periodoFim || current.data || '').trim(),
-      textoCertificado: String(current.textoCertificado || '').trim(),
+      textoCertificado: String(current.textoCertificado || '').trim() || textoNormalizado,
       conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       // Guarda o estado do checklist do modal para agilizar próximos alunos do mesmo curso
       courseFormsSnapshot: [{
@@ -797,7 +817,7 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         horarioInicio: String(current.horarioInicio || '').trim(),
         periodoInicio: String(current.periodoInicio || current.data || '').trim(),
         periodoFim: String(current.periodoFim || current.data || '').trim(),
-        textoCertificado: String(current.textoCertificado || '').trim(),
+        textoCertificado: String(current.textoCertificado || '').trim() || textoNormalizado,
         conteudoProgramatico: String(current.conteudoProgramatico || '').trim(),
       }],
       savedAt: new Date().toISOString(),
@@ -825,15 +845,29 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       }
       setCourseForms((prev) => prev.map((item) => {
         if (item.cursoId !== current.cursoId) return item;
+        const local = String(draft.local || '').trim();
+        const data = String(draft.data || '').trim();
+        const duracao = String(draft.duracao || '').trim();
+        const periodoInicio = String(draft.periodoInicio || draft.data || '').trim();
+        const periodoFim = String(draft.periodoFim || draft.data || '').trim();
+        const textoDraft = String(draft.textoCertificado || '').trim();
         return {
           ...item,
-          local: String(draft.local || '').trim(),
-          data: String(draft.data || '').trim(),
-          duracao: String(draft.duracao || '').trim(),
+          local,
+          data,
+          duracao,
           horarioInicio: String(draft.horarioInicio || '').trim(),
-          periodoInicio: String(draft.periodoInicio || draft.data || '').trim(),
-          periodoFim: String(draft.periodoFim || draft.data || '').trim(),
-          textoCertificado: String(draft.textoCertificado || '').trim(),
+          periodoInicio,
+          periodoFim,
+          textoCertificado: textoDraft || buildCertificatePreviewText({
+            nome: aluno?.nome,
+            cpf: aluno?.cpf,
+            nomeCurso: item.cursoNome,
+            duracao,
+            local,
+            periodoInicio: periodoInicio || data,
+            periodoFim: periodoFim || data,
+          }),
           conteudoProgramatico: String(
             draft.conteudoProgramatico || resolveCourseProgramContent(item.cursoId, '')
           ).trim(),
