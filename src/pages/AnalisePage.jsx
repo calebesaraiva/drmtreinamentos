@@ -1234,7 +1234,6 @@ export default function AnalisePage() {
   const [companyRequestRecusa, setCompanyRequestRecusa] = useState(null);
   const [companyRequestMotivo, setCompanyRequestMotivo] = useState('');
   const [autorizaCadastroAluno, setAutorizaCadastroAluno] = useState(null);
-  const [autorizaCertificadoAluno, setAutorizaCertificadoAluno] = useState(null);
   const [downloadModalAluno, setDownloadModalAluno] = useState(null);
   const [pdfSelectAluno, setPdfSelectAluno] = useState(null);
   const [downloadActionType, setDownloadActionType] = useState('pdf');
@@ -1320,24 +1319,6 @@ export default function AnalisePage() {
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
-  };
-
-  const handleAprovar = (aluno) => {
-    setAutorizaCertificadoAluno(aluno);
-  };
-
-  const handleConfirmAutorizaCertificado = async (confirmacao) => {
-    if (!autorizaCertificadoAluno?.id) return;
-    const id = autorizaCertificadoAluno.id;
-    setProcessing(`${id}:statusCertificado`);
-    try {
-      await updateStudentStatus(id, 'statusCertificado', 'aprovado', null, {
-        certificadoConfirmacao: confirmacao,
-      });
-      setAutorizaCertificadoAluno(null);
-    } finally {
-      setProcessing(null);
-    }
   };
 
   const handleDownloadPdf = async (aluno) => {
@@ -1788,11 +1769,14 @@ export default function AnalisePage() {
                           )}
                           {aluno.statusCertificado === 'pendente' && aluno.statusCadastro === 'aprovado' && isPresent && hasCadastroCompleto && (
                             <button
-                              onClick={() => handleAprovar(aluno)}
+                              onClick={() => {
+                                setDownloadActionType('pdf');
+                                setDownloadModalAluno(aluno);
+                              }}
                               disabled={isProcessing}
                               className="btn-success text-xs py-1.5 px-3 disabled:opacity-60"
                             >
-                              Autorizar certificado
+                              Checklist e emitir
                             </button>
                           )}
                           {aluno.statusCertificado === 'aprovado' && (
@@ -1817,7 +1801,7 @@ export default function AnalisePage() {
                             </button>
                           )}
                           {isFullyApproved && (
-                            <span className="badge-green">Bloqueado após aprovação</span>
+                            <span className="badge-green">Emitido: edição bloqueada</span>
                           )}
                         </div>
                       </div>
@@ -1882,14 +1866,6 @@ export default function AnalisePage() {
         aluno={editaAlunoModal}
         courses={courses}
         loading={processing === `${editaAlunoModal?.id}:edit`}
-      />
-
-      <AutorizaCertificadoModal
-        isOpen={!!autorizaCertificadoAluno}
-        onClose={() => setAutorizaCertificadoAluno(null)}
-        onConfirm={handleConfirmAutorizaCertificado}
-        aluno={autorizaCertificadoAluno}
-        loading={processing === `${autorizaCertificadoAluno?.id}:statusCertificado`}
       />
 
       <EmissaoCertificadoModal
