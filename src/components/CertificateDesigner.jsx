@@ -424,7 +424,26 @@ function SpecialField({ id, field, cfg, values, scale }) {
   }
 
   if (field.kind === 'locationText') {
-    return null;
+    return (
+      <div
+        className="w-full h-full flex items-center justify-center overflow-hidden"
+        style={{
+          border: `${Math.max(1, 2 * scale)}px solid ${cfg.corPrimaria}`,
+          background: 'rgba(255,255,255,0.34)',
+        }}
+      >
+        <span
+          className="font-black uppercase whitespace-nowrap"
+          style={{
+            color: cfg.corPrimaria,
+            fontSize: `${field.fontSize * scale}px`,
+            letterSpacing: `${0.45 * scale}px`,
+          }}
+        >
+          LOCAL DO CURSO - {values[id]}
+        </span>
+      </div>
+    );
   }
 
   if (field.kind === 'seal') {
