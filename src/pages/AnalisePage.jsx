@@ -1030,7 +1030,7 @@ function AlunoCard({ aluno, onAprovar, onAprovarCadastro, onRecusar, onDownloadP
               </button>
             </div>
           )}
-          {aluno.statusCadastro === 'aprovado' && (
+          {aluno.statusCadastro === 'aprovado' && !hasCadastroCompleto && (
             <button
               onClick={() => onAprovarCadastro(aluno)}
               disabled={isProcessing}
@@ -1154,6 +1154,12 @@ export default function AnalisePage() {
     if (val === 'pendente') return hasPendente && !hasRecusado;
     if (val === 'aprovado') return allCadastroAprovado && allCertAprovado;
     return hasRecusado;
+  };
+  const studentMatchesFilter = (student, val) => {
+    if (val === 'todos') return true;
+    if (val === 'pendente') return student.statusCadastro === 'pendente' || student.statusCertificado === 'pendente';
+    if (val === 'aprovado') return student.statusCadastro === 'aprovado' && student.statusCertificado === 'aprovado';
+    return student.statusCadastro === 'recusado' || student.statusCertificado === 'recusado';
   };
   const uniqueCountByFilter = (val) => groupedAll.filter((group) => groupMatchesFilter(group, val)).length;
 
@@ -1588,7 +1594,10 @@ export default function AnalisePage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedFiltered.map((group) => (
+          {groupedFiltered.map((group) => {
+            const visibleStudents = group.students.filter((s) => studentMatchesFilter(s, filter));
+            if (visibleStudents.length === 0) return null;
+            return (
             <div key={`group-${group.cpfKey}`} className="card">
               <div className="flex items-start justify-between gap-3 mb-3">
                 <div>
@@ -1596,11 +1605,11 @@ export default function AnalisePage() {
                   <p className="text-sm text-gray-600">{safeText(group.cpf)} • {safeText(group.empresa)}</p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600">
-                  {group.students.length} curso(s)
+                  {visibleStudents.length} curso(s)
                 </span>
               </div>
               <div className="space-y-3">
-                {group.students.map((aluno) => {
+                {visibleStudents.map((aluno) => {
                   const isProcessing = processing?.startsWith(`${aluno.id}:`);
                   const isPresent = aluno.presente === true || Number(aluno.presenca || 0) >= 75;
                   const hasCadastroCompleto = String(aluno.filial || '').trim().length >= 2
@@ -1667,7 +1676,7 @@ export default function AnalisePage() {
                 })}
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
 
