@@ -188,7 +188,7 @@ function StatusPill({ value }) {
 }
 
 export default function Dashboard() {
-  const { students, courses, classes, user, apiError, addCourse, addManualStudent, refreshData, loadingData, addSystemUser } = useApp();
+  const { students, courses, classes, user, apiError, addCourse, updateCourse, addManualStudent, refreshData, loadingData, addSystemUser } = useApp();
   const navigate = useNavigate();
   const [dashboardData, setDashboardData] = useState(null);
   const [dashboardError, setDashboardError] = useState(null);
@@ -223,6 +223,31 @@ export default function Dashboard() {
   const [quickClientDataForm, setQuickClientDataForm] = useState({ contato: '', email: '', telefone: '' });
   const [quickClientRequests, setQuickClientRequests] = useState([]);
   const [quickClientSubmitting, setQuickClientSubmitting] = useState(false);
+  const [quickCourseManagerSearch, setQuickCourseManagerSearch] = useState('');
+  const [quickCourseManagerSelectedId, setQuickCourseManagerSelectedId] = useState('');
+  const [quickCourseManagerSaving, setQuickCourseManagerSaving] = useState(false);
+  const [quickCourseManagerCreating, setQuickCourseManagerCreating] = useState(false);
+  const [quickCourseManagerForm, setQuickCourseManagerForm] = useState({
+    nomeCurso: '',
+    descricao: '',
+    empresaContratante: '',
+    local: '',
+    duracao: '',
+    horarioInicio: '',
+    maxAlunos: 30,
+    status: 'ativo',
+  });
+  const [quickCourseManagerNewForm, setQuickCourseManagerNewForm] = useState({
+    nomeCurso: '',
+    descricao: '',
+    empresaContratante: '',
+    local: '',
+    data: '',
+    horarioInicio: '08:00',
+    duracao: '8 horas',
+    maxAlunos: 30,
+    status: 'ativo',
+  });
   const [recentSelectedIds, setRecentSelectedIds] = useState([]);
   const [recentDetailStudent, setRecentDetailStudent] = useState(null);
   const [chartRange, setChartRange] = useState('6m');
@@ -373,6 +398,15 @@ export default function Dashboard() {
     () => courses.filter(item => String(item.status || '').toLowerCase() !== 'inativo'),
     [courses],
   );
+  const quickCourseManagerFiltered = useMemo(() => {
+    const q = quickCourseManagerSearch.trim().toLowerCase();
+    if (!q) return courses;
+    return courses.filter((item) =>
+      String(item.nomeCurso || '').toLowerCase().includes(q)
+      || String(item.empresaContratante || '').toLowerCase().includes(q)
+      || String(item.local || '').toLowerCase().includes(q)
+    );
+  }, [courses, quickCourseManagerSearch]);
   const dynamicChartData = useMemo(() => {
     if (chartRange === '6m') return buildMonthlySeriesFromStudents(students, 6);
     if (chartRange === '12m') return buildMonthlySeriesFromStudents(students, 12);
@@ -427,6 +461,108 @@ export default function Dashboard() {
       } else {
         setQuickClientRequests([]);
       }
+    }
+    if (type === 'cursos') {
+      setQuickCourseManagerSearch('');
+      setQuickCourseManagerSelectedId('');
+      setQuickCourseManagerForm({
+        nomeCurso: '',
+        descricao: '',
+        empresaContratante: '',
+        local: '',
+        duracao: '',
+        horarioInicio: '',
+        maxAlunos: 30,
+        status: 'ativo',
+      });
+      setQuickCourseManagerNewForm({
+        nomeCurso: '',
+        descricao: '',
+        empresaContratante: '',
+        local: '',
+        data: '',
+        horarioInicio: '08:00',
+        duracao: '8 horas',
+        maxAlunos: 30,
+        status: 'ativo',
+      });
+    }
+  };
+  const openCourseInManager = (course) => {
+    if (!course) return;
+    setQuickCourseManagerSelectedId(String(course.id));
+    setQuickCourseManagerForm({
+      nomeCurso: course.nomeCurso || '',
+      descricao: course.descricao || '',
+      empresaContratante: course.empresaContratante || '',
+      local: course.local || '',
+      duracao: course.duracao || '',
+      horarioInicio: course.horarioInicio || '',
+      maxAlunos: Number(course.maxAlunos || 30),
+      status: course.status || 'ativo',
+    });
+  };
+  const handleSaveManagedCourse = async () => {
+    if (!quickCourseManagerSelectedId) {
+      setQuickStatus({ type: 'error', text: 'Selecione um curso para alterar.' });
+      return;
+    }
+    if (!quickCourseManagerForm.nomeCurso || !quickCourseManagerForm.empresaContratante || !quickCourseManagerForm.local || !quickCourseManagerForm.duracao || !quickCourseManagerForm.maxAlunos) {
+      setQuickStatus({ type: 'error', text: 'Preencha os campos obrigatórios do curso antes de salvar.' });
+      return;
+    }
+    setQuickCourseManagerSaving(true);
+    setQuickStatus(null);
+    try {
+      const payload = {
+        ...quickCourseManagerForm,
+        maxAlunos: Number(quickCourseManagerForm.maxAlunos || 1),
+      };
+      const updated = await updateCourse(quickCourseManagerSelectedId, payload);
+      if (!updated) return;
+      setQuickStatus({ type: 'success', text: 'Curso atualizado com sucesso.' });
+      await refreshData();
+    } catch (error) {
+      setQuickStatus({ type: 'error', text: error?.message || 'Não foi possível salvar o curso.' });
+    } finally {
+      setQuickCourseManagerSaving(false);
+    }
+  };
+  const handleCreateManagedCourse = async () => {
+    if (!quickCourseManagerNewForm.nomeCurso || !quickCourseManagerNewForm.empresaContratante || !quickCourseManagerNewForm.local || !quickCourseManagerNewForm.data || !quickCourseManagerNewForm.horarioInicio || !quickCourseManagerNewForm.duracao || !quickCourseManagerNewForm.maxAlunos) {
+      setQuickStatus({ type: 'error', text: 'Preencha os campos obrigatórios para cadastrar o curso.' });
+      return;
+    }
+    setQuickCourseManagerCreating(true);
+    setQuickStatus(null);
+    try {
+      const created = await addCourse({
+        ...quickCourseManagerNewForm,
+        maxAlunos: Number(quickCourseManagerNewForm.maxAlunos || 1),
+        temInstrutor: false,
+        instrutorNome: '',
+        instrutorCargo: '',
+        instrutorRegistro: '',
+      });
+      if (!created) return;
+      setQuickStatus({ type: 'success', text: 'Curso cadastrado com sucesso.' });
+      setQuickCourseManagerNewForm({
+        nomeCurso: '',
+        descricao: '',
+        empresaContratante: '',
+        local: '',
+        data: '',
+        horarioInicio: '08:00',
+        duracao: '8 horas',
+        maxAlunos: 30,
+        status: 'ativo',
+      });
+      await refreshData();
+      openCourseInManager(created);
+    } catch (error) {
+      setQuickStatus({ type: 'error', text: error?.message || 'Não foi possível cadastrar o curso.' });
+    } finally {
+      setQuickCourseManagerCreating(false);
     }
   };
 
@@ -812,7 +948,7 @@ export default function Dashboard() {
           value={totalCursos}
           sub="Cursos ativos"
           color="text-purple-600"
-          onClick={() => navigate('/qrcode')}
+          onClick={() => openQuickModal('cursos')}
           actionLabel="Gerenciar cursos e QR Code"
         />
         <StatCard
@@ -1078,6 +1214,100 @@ export default function Dashboard() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal isOpen={quickModal === 'cursos'} onClose={() => setQuickModal('')} title="Cursos cadastrados (rápido)" size="lg">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 mb-1">Buscar curso</label>
+            <input
+              className="input-field"
+              value={quickCourseManagerSearch}
+              onChange={(e) => setQuickCourseManagerSearch(e.target.value)}
+              placeholder="Nome do curso, empresa ou local"
+            />
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-gray-100 overflow-hidden">
+              <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="text-sm font-semibold text-gray-800">Todos os cursos ({quickCourseManagerFiltered.length})</p>
+              </div>
+              <div className="max-h-72 overflow-auto">
+                {quickCourseManagerFiltered.length === 0 ? (
+                  <p className="px-3 py-4 text-sm text-gray-500">Nenhum curso encontrado.</p>
+                ) : quickCourseManagerFiltered.map((item) => (
+                  <button
+                    key={`course-manager-${item.id}`}
+                    type="button"
+                    onClick={() => openCourseInManager(item)}
+                    className={`w-full text-left px-3 py-3 border-b border-gray-50 hover:bg-gray-50 ${
+                      String(quickCourseManagerSelectedId) === String(item.id) ? 'bg-amber-50' : 'bg-white'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold text-gray-800">{item.nomeCurso}</p>
+                    <p className="text-xs text-gray-500">{item.empresaContratante || 'Empresa não informada'} • {item.local || 'Local não informado'}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-gray-100 p-3 space-y-2">
+              <p className="text-sm font-semibold text-gray-800">Editar curso selecionado</p>
+              {!quickCourseManagerSelectedId ? (
+                <p className="text-xs text-gray-500">Selecione um curso na lista para alterar descrição e dados.</p>
+              ) : (
+                <>
+                  <input className="input-field" placeholder="Nome do curso *" value={quickCourseManagerForm.nomeCurso} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, nomeCurso: e.target.value }))} />
+                  <textarea className="input-field min-h-16" placeholder="Descrição" value={quickCourseManagerForm.descricao} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, descricao: e.target.value }))} />
+                  <input className="input-field" placeholder="Empresa contratante *" value={quickCourseManagerForm.empresaContratante} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, empresaContratante: e.target.value }))} />
+                  <input className="input-field" placeholder="Local *" value={quickCourseManagerForm.local} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, local: e.target.value }))} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className="input-field" placeholder="Duração *" value={quickCourseManagerForm.duracao} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, duracao: e.target.value }))} />
+                    <input className="input-field" type="time" value={quickCourseManagerForm.horarioInicio} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, horarioInicio: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className="input-field" type="number" min="1" value={quickCourseManagerForm.maxAlunos} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, maxAlunos: Number(e.target.value || 1) }))} />
+                    <select className="input-field" value={quickCourseManagerForm.status} onChange={(e) => setQuickCourseManagerForm(prev => ({ ...prev, status: e.target.value }))}>
+                      <option value="ativo">Ativo</option>
+                      <option value="inativo">Inativo</option>
+                    </select>
+                  </div>
+                  <button type="button" onClick={handleSaveManagedCourse} disabled={quickCourseManagerSaving} className="btn-primary text-sm w-full disabled:opacity-60">
+                    {quickCourseManagerSaving ? 'Salvando...' : 'Salvar alterações'}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 space-y-2">
+            <p className="text-sm font-semibold text-blue-900">Cadastrar novo curso</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input className="input-field" placeholder="Nome do curso *" value={quickCourseManagerNewForm.nomeCurso} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, nomeCurso: e.target.value }))} />
+              <input className="input-field" placeholder="Empresa contratante *" value={quickCourseManagerNewForm.empresaContratante} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, empresaContratante: e.target.value }))} />
+              <input className="input-field sm:col-span-2" placeholder="Descrição" value={quickCourseManagerNewForm.descricao} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, descricao: e.target.value }))} />
+              <input className="input-field" placeholder="Local *" value={quickCourseManagerNewForm.local} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, local: e.target.value }))} />
+              <input className="input-field" type="date" value={quickCourseManagerNewForm.data} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, data: e.target.value }))} />
+              <input className="input-field" type="time" value={quickCourseManagerNewForm.horarioInicio} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, horarioInicio: e.target.value }))} />
+              <input className="input-field" placeholder="Duração *" value={quickCourseManagerNewForm.duracao} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, duracao: e.target.value }))} />
+              <input className="input-field" type="number" min="1" value={quickCourseManagerNewForm.maxAlunos} onChange={(e) => setQuickCourseManagerNewForm(prev => ({ ...prev, maxAlunos: Number(e.target.value || 1) }))} />
+            </div>
+            <button type="button" onClick={handleCreateManagedCourse} disabled={quickCourseManagerCreating} className="btn-secondary text-sm disabled:opacity-60">
+              {quickCourseManagerCreating ? 'Cadastrando...' : 'Cadastrar curso'}
+            </button>
+          </div>
+
+          {quickStatus && (
+            <div className={`rounded-xl border p-3 text-sm ${quickStatus.type === 'success' ? 'bg-green-50 border-green-100 text-green-700' : 'bg-red-50 border-red-100 text-red-700'}`}>
+              {quickStatus.text}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => setQuickModal('')} className="btn-secondary text-sm">Fechar</button>
+            <button type="button" onClick={() => navigate('/qrcode')} className="btn-primary text-sm">Abrir tela completa</button>
+          </div>
+        </div>
       </Modal>
 
       <Modal isOpen={quickModal === 'turma'} onClose={() => setQuickModal('')} title="Iniciar turma (rápido)" size="lg">
