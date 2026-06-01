@@ -27,11 +27,7 @@ function formatDateTime(dateTime) {
 
 function AlunoDetalheModal({ aluno, onClose, onAutorizar, onRecusar, processing }) {
   if (!aluno) return null;
-  const cadastroProcessing = processing === `${aluno.id}:statusCadastro`;
-  const certificadoProcessing = processing === `${aluno.id}:statusCertificado`;
-  const cadastroRecusaProcessing = processing === `${aluno.id}:statusCadastro:recusar`;
-  const certificadoRecusaProcessing = processing === `${aluno.id}:statusCertificado:recusar`;
-  const isPresent = aluno.presente === true || Number(aluno.presenca || 0) >= 75;
+  const cursos = aluno.cursos || [];
 
   return (
     <Modal isOpen={!!aluno} onClose={onClose} title="Detalhes do Aluno" size="lg">
@@ -45,7 +41,7 @@ function AlunoDetalheModal({ aluno, onClose, onAutorizar, onRecusar, processing 
             <h3 className="text-xl font-bold text-gray-800">{aluno.nome}</h3>
             <p className="text-gray-500 text-sm">{aluno.cargo} — {aluno.empresa}</p>
             <div className="flex gap-2 mt-1">
-              <StatusBadge status={aluno.statusCadastro} />
+              <StatusBadge status={aluno.statusCadastroGeral} />
             </div>
           </div>
         </div>
@@ -56,121 +52,66 @@ function AlunoDetalheModal({ aluno, onClose, onAutorizar, onRecusar, processing 
           <InfoItem icon={Mail} label="E-mail" value={aluno.email} />
           <InfoItem icon={Phone} label="Telefone" value={aluno.telefone} />
           <InfoItem icon={Building2} label="Empresa" value={aluno.empresa} />
-          <InfoItem icon={BookOpen} label="Curso" value={aluno.nomeCurso} />
-          <InfoItem icon={MapPin} label="Local" value={aluno.local} />
-          <InfoItem icon={Calendar} label="Data do Curso" value={aluno.data ? new Date(aluno.data + 'T12:00').toLocaleDateString('pt-BR') : '-'} />
+          <InfoItem icon={BookOpen} label="Cursos" value={`${cursos.length} curso(s)`} />
+          <InfoItem icon={MapPin} label="Local principal" value={aluno.local || '-'} />
+          <InfoItem icon={Calendar} label="Última data" value={aluno.data ? new Date(aluno.data + 'T12:00').toLocaleDateString('pt-BR') : '-'} />
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <div className="bg-blue-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-blue-700">{aluno.presenca}%</p>
-            <p className="text-xs text-blue-600 font-medium mt-0.5">Presença</p>
-          </div>
-          <div className="bg-green-50 rounded-xl p-3 text-center">
-            <p className="text-2xl font-bold text-green-700">{aluno.notaProva}</p>
-            <p className="text-xs text-green-600 font-medium mt-0.5">Nota</p>
-          </div>
-          <div className={`rounded-xl p-3 text-center ${aluno.certificadoEnviado ? 'bg-purple-50' : 'bg-gray-50'}`}>
-            <p className={`text-sm font-bold mt-1 ${aluno.certificadoEnviado ? 'text-purple-700' : 'text-gray-500'}`}>
-              {aluno.certificadoEnviado ? 'Enviado' : 'Pendente'}
-            </p>
-            <p className={`text-xs font-medium mt-0.5 ${aluno.certificadoEnviado ? 'text-purple-600' : 'text-gray-400'}`}>Certificado</p>
-          </div>
-        </div>
+        <div className="space-y-3">
+          <p className="text-sm font-semibold text-gray-700">Cursos e status</p>
+          {cursos.map((curso) => {
+            const cadastroProcessing = processing === `${curso.id}:statusCadastro`;
+            const certificadoProcessing = processing === `${curso.id}:statusCertificado`;
+            const cadastroRecusaProcessing = processing === `${curso.id}:statusCadastro:recusar`;
+            const certificadoRecusaProcessing = processing === `${curso.id}:statusCertificado:recusar`;
+            const isPresent = curso.presente === true || Number(curso.presenca || 0) >= 75;
 
-        {/* Motivo recusa */}
-        {aluno.motivoRecusa && (
-          <div className="bg-red-50 border border-red-100 rounded-xl p-4">
-            <p className="text-xs font-semibold text-red-700 mb-1">Motivo da Recusa</p>
-            <p className="text-sm text-red-600">{aluno.motivoRecusa}</p>
-          </div>
-        )}
-
-        {/* Cert status */}
-        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-          <span className="text-sm text-gray-600">Status do Certificado</span>
-          <StatusBadge status={aluno.statusCertificado} />
-        </div>
-        {aluno.dataEnvio && (
-          <p className="text-xs text-gray-400 -mt-3">Certificado enviado em {new Date(aluno.dataEnvio + 'T12:00').toLocaleDateString('pt-BR')}</p>
-        )}
-
-        {aluno.certificadoAutorizadoEm && (
-          <div className="bg-green-50 border border-green-100 rounded-xl p-4">
-            <p className="text-xs font-semibold text-green-700 mb-1">Assinatura do certificado</p>
-            <p className="text-sm text-green-700">
-              Autorizado em {formatDateTime(aluno.certificadoAutorizadoEm)}
-              {aluno.certificadoAutorizadoPor ? ` por ${aluno.certificadoAutorizadoPor}` : ''}
-            </p>
-            {aluno.certificadoAssinaturaCodigo && (
-              <p className="text-xs font-mono text-green-600 mt-1">{aluno.certificadoAssinaturaCodigo}</p>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-gray-100">
-          {aluno.statusCadastro === 'pendente' && (
-            <>
-              <button
-                type="button"
-                onClick={() => onAutorizar(aluno, 'statusCadastro')}
-                disabled={cadastroProcessing || cadastroRecusaProcessing}
-                className="btn-success flex-1 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {cadastroProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                {cadastroProcessing ? 'Autorizando...' : 'Autorizar aluno'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRecusar(aluno, 'statusCadastro')}
-                disabled={cadastroProcessing || cadastroRecusaProcessing}
-                className="btn-danger flex-1 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {cadastroRecusaProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                {cadastroRecusaProcessing ? 'Recusando...' : 'Recusar aluno'}
-              </button>
-            </>
-          )}
-
-          {aluno.statusCadastro === 'aprovado' && aluno.statusCertificado === 'pendente' && isPresent && (
-            <>
-              <button
-                type="button"
-                onClick={() => onAutorizar(aluno, 'statusCertificado')}
-                disabled={certificadoProcessing || certificadoRecusaProcessing}
-                className="btn-success flex-1 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {certificadoProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-                {certificadoProcessing ? 'Liberando...' : 'Liberar certificado'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onRecusar(aluno, 'statusCertificado')}
-                disabled={certificadoProcessing || certificadoRecusaProcessing}
-                className="btn-danger flex-1 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {certificadoRecusaProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                {certificadoRecusaProcessing ? 'Recusando...' : 'Recusar certificado'}
-              </button>
-            </>
-          )}
-          {aluno.statusCadastro === 'aprovado' && aluno.statusCertificado === 'pendente' && !isPresent && (
-            <>
-              <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 flex-1">
-                Aguardando presença na chamada para liberar certificado.
+            return (
+              <div key={curso.id} className="rounded-xl border border-gray-100 p-3 bg-gray-50/40">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-gray-800">{curso.nomeCurso || '-'}</p>
+                    <p className="text-xs text-gray-500">
+                      {curso.data ? new Date(curso.data + 'T12:00').toLocaleDateString('pt-BR') : '-'} • {curso.local || 'Local pendente'}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <StatusBadge status={curso.statusCadastro} />
+                    <StatusBadge status={curso.statusCertificado} />
+                  </div>
+                </div>
+                {curso.motivoRecusa && (
+                  <p className="text-xs text-red-600 mt-2">{curso.motivoRecusa}</p>
+                )}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {curso.statusCadastro === 'pendente' && (
+                    <>
+                      <button type="button" onClick={() => onAutorizar(curso, 'statusCadastro')} disabled={cadastroProcessing || cadastroRecusaProcessing} className="btn-success text-xs disabled:opacity-60">
+                        {cadastroProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                        {cadastroProcessing ? 'Autorizando...' : 'Autorizar aluno'}
+                      </button>
+                      <button type="button" onClick={() => onRecusar(curso, 'statusCadastro')} disabled={cadastroProcessing || cadastroRecusaProcessing} className="btn-danger text-xs disabled:opacity-60">
+                        {cadastroRecusaProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                        {cadastroRecusaProcessing ? 'Recusando...' : 'Recusar aluno'}
+                      </button>
+                    </>
+                  )}
+                  {curso.statusCadastro === 'aprovado' && curso.statusCertificado === 'pendente' && isPresent && (
+                    <>
+                      <button type="button" onClick={() => onAutorizar(curso, 'statusCertificado')} disabled={certificadoProcessing || certificadoRecusaProcessing} className="btn-success text-xs disabled:opacity-60">
+                        {certificadoProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                        {certificadoProcessing ? 'Liberando...' : 'Liberar certificado'}
+                      </button>
+                      <button type="button" onClick={() => onRecusar(curso, 'statusCertificado')} disabled={certificadoProcessing || certificadoRecusaProcessing} className="btn-danger text-xs disabled:opacity-60">
+                        {certificadoRecusaProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                        {certificadoRecusaProcessing ? 'Recusando...' : 'Recusar certificado'}
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => onRecusar(aluno, 'statusCertificado')}
-                disabled={certificadoRecusaProcessing}
-                className="btn-danger flex-1 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {certificadoRecusaProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
-                {certificadoRecusaProcessing ? 'Recusando...' : 'Recusar certificado'}
-              </button>
-            </>
-          )}
+            );
+          })}
         </div>
       </div>
     </Modal>
@@ -1182,9 +1123,9 @@ export default function AlunosPage() {
     setQuickFilter('todos');
   }, [monthNumber]);
 
-  const cursos = [...new Set(students.map(s => s.nomeCurso))];
+  const cursos = [...new Set(students.map(s => s.nomeCurso).filter(Boolean))];
 
-  const filtered = students
+  const filteredRecords = students
     .filter(s => {
       const q = search.toLowerCase();
       const matchSearch = !search ||
@@ -1216,6 +1157,50 @@ export default function AlunosPage() {
       return 0;
     });
 
+  const groupedStudents = useMemo(() => {
+    const groups = new Map();
+    filteredRecords.forEach((item) => {
+      const key = String(item.cpf || item.id || '').trim() || String(item.id);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: item.id,
+          cpf: item.cpf,
+          nome: item.nome,
+          email: item.email,
+          telefone: item.telefone,
+          empresa: item.empresa,
+          cargo: item.cargo,
+          local: item.local,
+          data: item.data,
+          cursos: [],
+        });
+      }
+      groups.get(key).cursos.push(item);
+    });
+    const aggregate = (arr, field) => {
+      if (arr.some((x) => x[field] === 'pendente')) return 'pendente';
+      if (arr.some((x) => x[field] === 'recusado')) return 'recusado';
+      return 'aprovado';
+    };
+    return [...groups.values()].map((group) => ({
+      ...group,
+      cursosCount: group.cursos.length,
+      statusCadastroGeral: aggregate(group.cursos, 'statusCadastro'),
+      statusCertificadoGeral: aggregate(group.cursos, 'statusCertificado'),
+      cursosAprovados: group.cursos.filter((c) => c.statusCertificado === 'aprovado').length,
+      cursosPendentes: group.cursos.filter((c) => c.statusCertificado === 'pendente').length,
+    }))
+      .sort((a, b) => {
+        let va = a[sortField] ?? '';
+        let vb = b[sortField] ?? '';
+        if (typeof va === 'string') va = va.toLowerCase();
+        if (typeof vb === 'string') vb = vb.toLowerCase();
+        if (va < vb) return sortDir === 'asc' ? -1 : 1;
+        if (va > vb) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [filteredRecords, sortField, sortDir]);
+
   const toggleSort = (field) => {
     if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
     else { setSortField(field); setSortDir('asc'); }
@@ -1224,7 +1209,7 @@ export default function AlunosPage() {
     const id = String(studentId);
     setSelectedIds(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
   };
-  const approvedVisibleIds = filtered
+  const approvedVisibleIds = filteredRecords
     .filter(item => item.statusCertificado === 'aprovado')
     .map(item => String(item.id));
   const toggleSelectApprovedVisible = () => {
@@ -1352,9 +1337,9 @@ export default function AlunosPage() {
       {/* Stats row */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { label: 'Total', val: students.length, cls: 'text-blue-700 bg-blue-50' },
-          { label: 'Aprovados', val: students.filter(s => s.statusCadastro === 'aprovado').length, cls: 'text-green-700 bg-green-50' },
-          { label: 'Pendentes', val: students.filter(s => s.statusCadastro === 'pendente').length, cls: 'text-amber-700 bg-amber-50' },
+          { label: 'Total (alunos únicos)', val: groupedStudents.length, cls: 'text-blue-700 bg-blue-50' },
+          { label: 'Aprovados', val: groupedStudents.filter(s => s.statusCadastroGeral === 'aprovado').length, cls: 'text-green-700 bg-green-50' },
+          { label: 'Pendentes', val: groupedStudents.filter(s => s.statusCadastroGeral === 'pendente').length, cls: 'text-amber-700 bg-amber-50' },
         ].map(({ label, val, cls }) => (
           <div key={label} className={`rounded-xl p-3 text-center ${cls.split(' ')[1]}`}>
             <p className={`text-2xl font-bold ${cls.split(' ')[0]}`}>{val}</p>
@@ -1386,7 +1371,7 @@ export default function AlunosPage() {
               <Mail className="w-3 h-3" />
               Enviar selecionados ({selectedIds.length})
             </button>
-            <span className="text-sm text-gray-400">{filtered.length} resultado(s)</span>
+            <span className="text-sm text-gray-400">{groupedStudents.length} aluno(s)</span>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -1396,10 +1381,10 @@ export default function AlunosPage() {
                 <th className="text-left text-xs font-semibold text-gray-500 uppercase tracking-wider px-4 py-3">Sel.</th>
                 {[
                   { field: 'nome', label: 'Aluno' },
-                  { field: 'nomeCurso', label: 'Curso' },
+                  { field: 'cursosCount', label: 'Cursos' },
                   { field: 'empresa', label: 'Empresa' },
-                  { field: 'statusCadastro', label: 'Cadastro' },
-                  { field: 'statusCertificado', label: 'Certificado' },
+                  { field: 'statusCadastroGeral', label: 'Cadastro' },
+                  { field: 'statusCertificadoGeral', label: 'Certificado' },
                 ].map(({ field, label }) => (
                   <th
                     key={field}
@@ -1416,20 +1401,24 @@ export default function AlunosPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filtered.length === 0 ? (
+              {groupedStudents.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-12 text-gray-400 text-sm">
                     Nenhum aluno encontrado.
                   </td>
                 </tr>
-              ) : filtered.map(s => (
-                <tr key={s.id} className="hover:bg-gray-50 transition-colors group">
+              ) : groupedStudents.map(s => (
+                <tr key={s.cpf || s.id} className="hover:bg-gray-50 transition-colors group">
                   <td className="px-4 py-3">
                     <input
                       type="checkbox"
-                      checked={selectedIds.includes(String(s.id))}
-                      onChange={() => toggleSelected(s.id)}
-                      disabled={s.statusCertificado !== 'aprovado'}
+                      checked={s.cursos.filter((c) => c.statusCertificado === 'aprovado').every((c) => selectedIds.includes(String(c.id))) && s.cursos.some((c) => c.statusCertificado === 'aprovado')}
+                      onChange={() => {
+                        const ids = s.cursos.filter((c) => c.statusCertificado === 'aprovado').map((c) => String(c.id));
+                        const allSelected = ids.length > 0 && ids.every((id) => selectedIds.includes(id));
+                        setSelectedIds((prev) => allSelected ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]);
+                      }}
+                      disabled={!s.cursos.some((c) => c.statusCertificado === 'aprovado')}
                     />
                   </td>
                   <td className="px-4 py-3">
@@ -1444,14 +1433,14 @@ export default function AlunosPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-gray-600 max-w-44 truncate">{s.nomeCurso}</p>
-                    <p className="text-xs text-gray-400">{s.data ? new Date(s.data + 'T12:00').toLocaleDateString('pt-BR') : '-'}</p>
+                    <p className="text-sm text-gray-700">{s.cursosCount} curso(s)</p>
+                    <p className="text-xs text-gray-400">{s.cursosAprovados} aprovado(s) • {s.cursosPendentes} pendente(s)</p>
                   </td>
                   <td className="px-4 py-3">
                     <p className="text-sm text-gray-600 max-w-36 truncate">{s.empresa}</p>
                   </td>
-                  <td className="px-4 py-3"><StatusBadge status={s.statusCadastro} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={s.statusCertificado} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={s.statusCadastroGeral} /></td>
+                  <td className="px-4 py-3"><StatusBadge status={s.statusCertificadoGeral} /></td>
                   <td className="px-4 py-3">
                     <button
                       onClick={() => setSelectedAluno(s)}
