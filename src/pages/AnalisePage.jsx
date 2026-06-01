@@ -813,6 +813,8 @@ export default function AnalisePage() {
   const [recusaLoading, setRecusaLoading] = useState(false);
   const [companyRequests, setCompanyRequests] = useState([]);
   const [companyRequestProcessing, setCompanyRequestProcessing] = useState('');
+  const hasCompanyRequestsApi = typeof api?.getCompanyChangeRequests === 'function'
+    && typeof api?.updateCompanyChangeRequestStatus === 'function';
   const [companyRequestRecusa, setCompanyRequestRecusa] = useState(null);
   const [companyRequestMotivo, setCompanyRequestMotivo] = useState('');
   const [autorizaCadastroAluno, setAutorizaCadastroAluno] = useState(null);
@@ -866,6 +868,10 @@ export default function AnalisePage() {
   const uniqueCountByFilter = (val) => groupedAll.filter((group) => groupMatchesFilter(group, val)).length;
 
   useEffect(() => {
+    if (!hasCompanyRequestsApi) {
+      setCompanyRequests([]);
+      return undefined;
+    }
     let ignore = false;
     async function loadCompanyRequests() {
       try {
@@ -877,7 +883,7 @@ export default function AnalisePage() {
     }
     loadCompanyRequests();
     return () => { ignore = true; };
-  }, [loadingData]);
+  }, [loadingData, hasCompanyRequestsApi]);
 
   const groupedFiltered = groupedAll.filter((group) => groupMatchesFilter(group, filter));
 
@@ -1001,6 +1007,7 @@ export default function AnalisePage() {
     .filter((turma) => turma.students.length > 0 || String(turma.origem || '') === 'pre-cadastro-empresarial');
 
   const handleCompanyRequestApprove = async (requestId) => {
+    if (!hasCompanyRequestsApi) return;
     setCompanyRequestProcessing(`approve:${requestId}`);
     try {
       await api.updateCompanyChangeRequestStatus(requestId, { status: 'aprovado' });
@@ -1012,6 +1019,7 @@ export default function AnalisePage() {
   };
 
   const handleCompanyRequestRecusa = async () => {
+    if (!hasCompanyRequestsApi) return;
     if (!companyRequestRecusa?.id) return;
     if (!companyRequestMotivo.trim()) return;
     setCompanyRequestProcessing(`reject:${companyRequestRecusa.id}`);
