@@ -2,7 +2,7 @@ import { BRAND_LOGO_PATH } from './brand.js';
 
 export const defaultCertificateConfig = {
   modeloVersao: 9,
-  nomeEmpresa: 'DR TREINAMENTOS E CONSULTORIA',
+  nomeEmpresa: 'DRM TREINAMENTOS E CONSULTORIA',
   subtitulo: '',
   cnpj: '48.518.202/0001-56',
   endereco: 'Imperatriz - MA',
@@ -58,11 +58,16 @@ function isBlueLikeColor(color) {
 function normalizeCertificateConfig(config = {}) {
   const nextConfig = { ...config };
   const usedOldBluePalette = isBlueLikeColor(config.corPrimaria);
+  const companyName = String(nextConfig.nomeEmpresa || '').trim();
 
   if (usedOldBluePalette) {
     nextConfig.corPrimaria = defaultCertificateConfig.corPrimaria;
     nextConfig.corSecundaria = defaultCertificateConfig.corSecundaria;
     nextConfig.corAcento = defaultCertificateConfig.corAcento;
+  }
+
+  if (/^DR\s+TREINAMENTOS\b/i.test(companyName)) {
+    nextConfig.nomeEmpresa = companyName.replace(/^DR\s+TREINAMENTOS\b/i, 'DRM TREINAMENTOS');
   }
 
   return {
