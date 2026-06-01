@@ -247,7 +247,11 @@ let users = mergeEnvUsers(initialData.users || []);
 const LEGACY_COURSE_NAME_ALIASES = new Map([
   ['NR-10 SEP - Segurança no Sistema Elétrico de Potência', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
   ['NR-10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR10 SEP - Segurança no Sistema Elétrico de Potência', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-10 - Segurança em Instalações e Serviços em Eletricidade', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
   ['NR-35 - Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
+  ['NR-35 - Segurança em Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
   ['NR-18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT'],
 ]);
 
@@ -258,6 +262,46 @@ const LEGACY_COURSE_CODE_ALIASES = new Map([
 function normalizeCourseNameByAlias(name = '') {
   const value = String(name || '').trim();
   return LEGACY_COURSE_NAME_ALIASES.get(value) || value;
+}
+
+function normalizeCourseNameKey(name = '') {
+  return String(name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+const LEGACY_COURSE_NAME_ALIASES_BY_KEY = (() => {
+  const map = new Map();
+  LEGACY_COURSE_NAME_ALIASES.forEach((toName, fromName) => {
+    map.set(normalizeCourseNameKey(fromName), toName);
+  });
+  return map;
+})();
+
+function normalizeCourseNameByAliasKey(name = '') {
+  const exact = normalizeCourseNameByAlias(name);
+  const key = normalizeCourseNameKey(exact);
+  return LEGACY_COURSE_NAME_ALIASES_BY_KEY.get(key) || exact;
+}
+
+function deepReplaceLegacyCourseNames(value) {
+  if (typeof value === 'string') {
+    return normalizeCourseNameByAliasKey(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => deepReplaceLegacyCourseNames(item));
+  }
+  if (value && typeof value === 'object') {
+    const next = {};
+    Object.entries(value).forEach(([k, v]) => {
+      next[k] = deepReplaceLegacyCourseNames(v);
+    });
+    return next;
+  }
+  return value;
 }
 
 function enforceCanonicalCourseNaming(payload = {}) {
@@ -274,10 +318,14 @@ function enforceCanonicalCourseNaming(payload = {}) {
     const normalizedCode = normalizeCode(code);
     const catalog = catalogByCode.get(normalizedCode);
     if (catalog?.nomeCurso) return catalog.nomeCurso;
-    return normalizeCourseNameByAlias(name);
+    return normalizeCourseNameByAliasKey(name);
   };
 
-  const coursesNext = (Array.isArray(payload.courses) ? payload.courses : []).map((course) => {
+  const coursesRaw = deepReplaceLegacyCourseNames(Array.isArray(payload.courses) ? payload.courses : []);
+  const studentsRaw = deepReplaceLegacyCourseNames(Array.isArray(payload.students) ? payload.students : []);
+  const classesRaw = deepReplaceLegacyCourseNames(Array.isArray(payload.classes) ? payload.classes : []);
+
+  const coursesNext = coursesRaw.map((course) => {
     const normalizedCode = normalizeCode(course?.codigoCatalogo || '');
     const normalizedName = normalizeNameFromCode(course?.nomeCurso || '', normalizedCode);
     return {
@@ -287,11 +335,11 @@ function enforceCanonicalCourseNaming(payload = {}) {
     };
   });
 
-  const studentsNext = (Array.isArray(payload.students) ? payload.students : []).map((student) => {
+  const studentsNext = studentsRaw.map((student) => {
     const normalizedCode = normalizeCode(student?.codigoCatalogo || '');
     const normalizedName = normalizeNameFromCode(student?.nomeCurso || '', normalizedCode);
     const selectedNames = Array.isArray(student?.selectedCourseNames)
-      ? student.selectedCourseNames.map((name) => normalizeCourseNameByAlias(name))
+      ? student.selectedCourseNames.map((name) => normalizeCourseNameByAliasKey(name))
       : student?.selectedCourseNames;
     return {
       ...student,
@@ -301,7 +349,7 @@ function enforceCanonicalCourseNaming(payload = {}) {
     };
   });
 
-  const classesNext = (Array.isArray(payload.classes) ? payload.classes : []).map((klass) => {
+  const classesNext = classesRaw.map((klass) => {
     const normalizedCode = normalizeCode(klass?.codigoCatalogo || '');
     return {
       ...klass,
@@ -1854,15 +1902,18 @@ function normalizeCoursePayload(payload) {
   const instrutorCargo = temInstrutor ? instrutorCargoRaw : '';
   const instrutorRegistro = temInstrutor ? instrutorRegistroRaw : '';
 
+  const normalizedCourseName = normalizeCourseNameByAliasKey(payload.nomeCurso || '');
+
   return {
     ...payload,
+    nomeCurso: normalizedCourseName,
     temInstrutor,
     instrutor: instrutorNome,
     instrutorNome,
     instrutorCargo,
     instrutorRegistro,
     status: payload.status || 'ativo',
-    codigoVerificacao: payload.codigoVerificacao || buildCourseAccessCode(payload.nomeCurso),
+    codigoVerificacao: payload.codigoVerificacao || buildCourseAccessCode(normalizedCourseName),
     chamadaStatus: payload.chamadaStatus || 'aberta',
     cronograma: normalizeSchedule(payload),
     cronogramaStatus: payload.cronogramaStatus || 'pendente',
