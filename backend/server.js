@@ -1112,24 +1112,31 @@ const COURSE_SCHEDULE_TEMPLATES = {
     'Riscos em instalações e serviços com eletricidade',
     'Técnicas de análise de risco',
     'Medidas de controle do risco elétrico',
-    'Normas técnicas brasileiras e regulamentações do MTE',
-    'Equipamentos de proteção coletiva e individual',
+    'Normas técnicas brasileiras (NBR-5410, NBR-14039 e outras)',
+    'Regulamentações do MTE',
+    'Equipamentos de proteção coletiva',
+    'Equipamentos de proteção individual',
     'Rotinas de trabalho e procedimentos',
     'Documentação de instalações elétricas',
-    'Riscos adicionais e combate a incêndios',
-    'Acidentes de origem elétrica, primeiros socorros e responsabilidades',
+    'Riscos adicionais',
+    'Proteção e combate a incêndios',
+    'Acidentes de origem elétrica',
+    'Primeiros socorros',
+    'Responsabilidades',
   ],
   NR35: [
     'Noções de segurança de trabalho em altura',
     'Normas aplicáveis para trabalho em altura',
     'Procedimentos de segurança para trabalhos em altura',
-    'Análise de riscos e fator de queda',
+    'Análise de riscos',
     'Proteção coletiva, isolamento e segurança',
+    'Fator de queda',
     'Acesso por corda',
     'Trabalho em altura conforme NR-18',
     'Nós, voltas e sistemas de ancoragem',
     'Prática de movimentação com talabarte e linhas de segurança',
-    'Proteção contra quedas e primeiros socorros',
+    'Proteção contra quedas',
+    'Primeiros socorros',
   ],
   NR18: [
     'Plataforma de Trabalho Aéreo e aspectos regulamentares',
@@ -1178,8 +1185,7 @@ function normalizeSchedule(course = {}) {
   const source = Array.isArray(course.cronograma) && course.cronograma.length > 0
     ? course.cronograma
     : buildDefaultSchedule(course);
-
-  return source.map((item, index) => ({
+  const normalized = source.map((item, index) => ({
     id: item.id || `aula-${index + 1}`,
     ordem: Number(item.ordem || index + 1),
     titulo: String(item.titulo || `Aula ${index + 1}`).trim(),
@@ -1188,6 +1194,25 @@ function normalizeSchedule(course = {}) {
     concluidoEm: item.concluidoEm || null,
     instrutor: item.instrutor || null,
   }));
+  const norm = detectCourseNorm(course.nomeCurso);
+  const templateTopics = COURSE_SCHEDULE_TEMPLATES[norm] || [];
+  if (!templateTopics.length || normalized.length >= templateTopics.length) return normalized;
+  const isPrefix = normalized.every(
+    (item, idx) => String(item.titulo || '').trim() === String(templateTopics[idx] || '').trim(),
+  );
+  if (!isPrefix) return normalized;
+  for (let i = normalized.length; i < templateTopics.length; i += 1) {
+    normalized.push({
+      id: `${norm}-${i + 1}`,
+      ordem: i + 1,
+      titulo: templateTopics[i],
+      status: 'pendente',
+      iniciadoEm: null,
+      concluidoEm: null,
+      instrutor: null,
+    });
+  }
+  return normalized;
 }
 
 function normalizeCourse(course) {
