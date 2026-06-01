@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "smoke:prod": "node scripts/smoke-production.js",
+    "restore:app-state": "node scripts/restore_app_state_from_data.cjs",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
     "prod:up": "docker compose -f docker-compose.prod.yml up -d --build",
