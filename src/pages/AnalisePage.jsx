@@ -572,6 +572,14 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
     const payload = {
       cursoId: courseIdKey,
       cursoNome: current.cursoNome,
+      selectedCourseIds: [...selectedCourseIds],
+      signatureType,
+      saveAsDefault,
+      temInstrutor,
+      instrutorNome: String(instrutorNome || '').trim(),
+      instrutorCargo: String(instrutorCargo || '').trim(),
+      instrutorRegistro: String(instrutorRegistro || '').trim(),
+      confirmChecklistDone: Boolean(confirmChecklistDone),
       local: String(current.local || '').trim(),
       data: String(current.data || '').trim(),
       duracao: String(current.duracao || '').trim(),
@@ -579,6 +587,18 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
       periodoInicio: String(current.periodoInicio || current.data || '').trim(),
       periodoFim: String(current.periodoFim || current.data || '').trim(),
       textoCertificado: String(current.textoCertificado || '').trim(),
+      // Guarda o estado do checklist do modal para agilizar próximos alunos do mesmo curso
+      courseFormsSnapshot: courseForms.map((item) => ({
+        cursoId: String(item.cursoId || '').trim(),
+        cursoNome: String(item.cursoNome || '').trim(),
+        local: String(item.local || '').trim(),
+        data: String(item.data || '').trim(),
+        duracao: String(item.duracao || '').trim(),
+        horarioInicio: String(item.horarioInicio || '').trim(),
+        periodoInicio: String(item.periodoInicio || item.data || '').trim(),
+        periodoFim: String(item.periodoFim || item.data || '').trim(),
+        textoCertificado: String(item.textoCertificado || '').trim(),
+      })),
       savedAt: new Date().toISOString(),
     };
     try {
@@ -624,6 +644,18 @@ function EmissaoCertificadoModal({ isOpen, onClose, onConfirm, aluno, loading, a
         needsReconfirm: true,
       };
     }));
+    if (Array.isArray(draft.selectedCourseIds) && draft.selectedCourseIds.length > 0) {
+      setSelectedCourseIds(draft.selectedCourseIds.map((item) => String(item || '').trim()).filter(Boolean));
+    }
+    if (draft.signatureType === 'manual' || draft.signatureType === 'digital') {
+      setSignatureType(draft.signatureType);
+    }
+    setSaveAsDefault(Boolean(draft.saveAsDefault));
+    setTemInstrutor(!(draft.temInstrutor === false));
+    setInstrutorNome(String(draft.instrutorNome || '').trim());
+    setInstrutorCargo(String(draft.instrutorCargo || '').trim());
+    setInstrutorRegistro(String(draft.instrutorRegistro || '').trim());
+    setConfirmChecklistDone(Boolean(draft.confirmChecklistDone));
     setDraftStatus('Rascunho aplicado. Revise e confirme os dados deste curso.');
   };
 
