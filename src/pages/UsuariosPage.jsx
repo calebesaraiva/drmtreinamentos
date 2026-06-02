@@ -57,7 +57,8 @@ export default function UsuariosPage() {
       item.name.toLowerCase().includes(q) ||
       item.username.toLowerCase().includes(q) ||
       item.email.toLowerCase().includes(q) ||
-      item.role.toLowerCase().includes(q)
+      item.role.toLowerCase().includes(q) ||
+      String(item.empresa || '').toLowerCase().includes(q)
     ));
   }, [search, systemUsers]);
 
@@ -68,6 +69,10 @@ export default function UsuariosPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (form.role === 'empresario' && !String(form.empresa || '').trim()) {
+      addNotification('Informe a empresa para o perfil Empresário.', 'error');
+      return;
+    }
     setSaving(true);
     const result = await addSystemUser(form);
     setSaving(false);
@@ -107,6 +112,10 @@ export default function UsuariosPage() {
   };
 
   const saveEdit = async (id) => {
+    if (editForm.role === 'empresario' && !String(editForm.empresa || '').trim()) {
+      addNotification('Informe a empresa para o perfil Empresário.', 'error');
+      return;
+    }
     setEditingSave(true);
     const changingPassword = Boolean(editForm.password.trim());
     const payload = {
@@ -157,23 +166,71 @@ export default function UsuariosPage() {
           Novo cadastro
         </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input className="input-field" placeholder="Nome completo" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
-          <input className="input-field" placeholder="Usuário de login" value={form.username} onChange={(e) => setForm(p => ({ ...p, username: e.target.value }))} />
-          <input type="email" className="input-field" placeholder="E-mail" value={form.email} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} />
-          <input className="input-field" placeholder="Empresa (para perfil Empresário)" value={form.empresa} onChange={(e) => setForm(p => ({ ...p, empresa: e.target.value }))} />
-          <input type="password" className="input-field" placeholder="Senha (mínimo 6 caracteres)" value={form.password} onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))} />
-          <select className="input-field" value={form.role} onChange={(e) => setForm(p => ({ ...p, role: e.target.value }))}>
-            <option value="instrutor">Instrutor</option>
-            <option value="usuario">Usuário</option>
-            <option value="empresario">Empresário</option>
-            <option value="responsavel">Responsável</option>
-            <option value="admin">Administrador</option>
-          </select>
-          <select className="input-field" value={form.status} onChange={(e) => setForm(p => ({ ...p, status: e.target.value }))}>
-            <option value="ativo">ativo</option>
-            <option value="pendente">pendente</option>
-            <option value="inativo">inativo</option>
-          </select>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">Nome completo</span>
+            <input className="input-field" placeholder="Ex: Responsável Grupo Mateus" value={form.name} onChange={(e) => setForm(p => ({ ...p, name: e.target.value }))} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">Usuário de login</span>
+            <input className="input-field" placeholder="Ex: grupomateus" value={form.username} onChange={(e) => setForm(p => ({ ...p, username: e.target.value }))} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">E-mail</span>
+            <input type="email" className="input-field" placeholder="responsavel@empresa.com" value={form.email} onChange={(e) => setForm(p => ({ ...p, email: e.target.value }))} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">Perfil</span>
+            <select
+              className="input-field"
+              value={form.role}
+              onChange={(e) => setForm(p => ({
+                ...p,
+                role: e.target.value,
+                empresa: e.target.value === 'empresario' ? p.empresa : '',
+              }))}
+            >
+              <option value="instrutor">Instrutor</option>
+              <option value="usuario">Usuário</option>
+              <option value="empresario">Empresário / Cliente</option>
+              <option value="responsavel">Responsável</option>
+              <option value="admin">Administrador</option>
+            </select>
+          </label>
+          {form.role === 'empresario' && (
+            <label className="space-y-1 md:col-span-2">
+              <span className="text-xs font-bold text-orange-700">Empresa vinculada *</span>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <input
+                  className="input-field border-orange-200 focus:ring-orange-200"
+                  placeholder="Digite exatamente: GRUPO MATEUS"
+                  value={form.empresa}
+                  onChange={(e) => setForm(p => ({ ...p, empresa: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm(p => ({ ...p, empresa: 'GRUPO MATEUS' }))}
+                  className="btn-secondary whitespace-nowrap"
+                >
+                  Usar GRUPO MATEUS
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">
+                O cliente só verá certificados, alunos e cursos dessa empresa.
+              </p>
+            </label>
+          )}
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">Senha</span>
+            <input type="password" className="input-field" placeholder="Senha (mínimo 6 caracteres)" value={form.password} onChange={(e) => setForm(p => ({ ...p, password: e.target.value }))} />
+          </label>
+          <label className="space-y-1">
+            <span className="text-xs font-bold text-gray-600">Status</span>
+            <select className="input-field" value={form.status} onChange={(e) => setForm(p => ({ ...p, status: e.target.value }))}>
+              <option value="ativo">ativo</option>
+              <option value="pendente">pendente</option>
+              <option value="inativo">inativo</option>
+            </select>
+          </label>
         </div>
         <button type="submit" className="btn-primary disabled:opacity-60" disabled={saving}>
           {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
@@ -193,7 +250,7 @@ export default function UsuariosPage() {
             <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               className="input-field pl-9"
-              placeholder="Buscar por nome, usuário, e-mail..."
+              placeholder="Buscar por nome, usuário, e-mail, empresa..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -212,6 +269,7 @@ export default function UsuariosPage() {
                 <th className="py-2 pr-2">Nome</th>
                 <th className="py-2 pr-2">Usuário</th>
                 <th className="py-2 pr-2">Perfil</th>
+                <th className="py-2 pr-2">Empresa</th>
                 <th className="py-2 pr-2">Status</th>
                 <th className="py-2">Ações</th>
               </tr>
@@ -247,15 +305,48 @@ export default function UsuariosPage() {
                       <select
                         className="input-field text-sm"
                         value={editForm.role}
-                        onChange={(e) => setEditForm(p => ({ ...p, role: e.target.value }))}
+                        onChange={(e) => setEditForm(p => ({
+                          ...p,
+                          role: e.target.value,
+                          empresa: e.target.value === 'empresario' ? p.empresa : '',
+                        }))}
                       >
                         <option value="instrutor">Instrutor</option>
                         <option value="usuario">Usuário</option>
-                        <option value="empresario">Empresário</option>
+                        <option value="empresario">Empresário / Cliente</option>
                         <option value="responsavel">Responsável</option>
                         <option value="admin">Administrador</option>
                       </select>
                     ) : item.role}
+                  </td>
+                  <td className="py-2 pr-2">
+                    {editingId === item.id ? (
+                      editForm.role === 'empresario' ? (
+                        <div className="space-y-2">
+                          <input
+                            className="input-field text-sm border-orange-200"
+                            value={editForm.empresa}
+                            onChange={(e) => setEditForm(p => ({ ...p, empresa: e.target.value }))}
+                            placeholder="Empresa vinculada"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditForm(p => ({ ...p, empresa: 'GRUPO MATEUS' }))}
+                            className="btn-secondary text-xs py-1.5 px-2.5"
+                          >
+                            GRUPO MATEUS
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Não se aplica</span>
+                      )
+                    ) : item.role === 'empresario' ? (
+                      <span className="inline-flex rounded-full bg-orange-50 px-2 py-1 text-xs font-bold text-orange-700">
+                        {item.empresa || 'Sem empresa'}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
                   </td>
                   <td className="py-2 pr-2">
                     {editingId === item.id ? (
@@ -287,12 +378,6 @@ export default function UsuariosPage() {
                           value={editForm.email}
                           onChange={(e) => setEditForm(p => ({ ...p, email: e.target.value }))}
                           placeholder="E-mail"
-                        />
-                        <input
-                          className="input-field text-sm"
-                          value={editForm.empresa}
-                          onChange={(e) => setEditForm(p => ({ ...p, empresa: e.target.value }))}
-                          placeholder="Empresa"
                         />
                       </div>
                     ) : (
