@@ -3018,6 +3018,20 @@ function deleteTestClass(id, payload = {}) {
   return { ok: true, removedClassId: id };
 }
 
+function deleteStudentRecord(id, auth = {}) {
+  if (!privilegedRoles.has(String(auth?.role || '').toLowerCase())) {
+    return { status: 403, error: 'Você não tem permissão para remover aluno.' };
+  }
+  const student = students.find(item => String(item.id) === String(id));
+  if (!student) return { status: 404, error: 'Aluno nao encontrado.' };
+  if (isCertificateIssued(student)) {
+    return { status: 409, error: 'Este aluno já possui certificado emitido. Remoção bloqueada para manter integridade.' };
+  }
+  students = students.filter(item => String(item.id) !== String(id));
+  persistData();
+  return { ok: true, removedStudentId: id };
+}
+
 function courseStudents(courseId) {
   const course = courses.find(item => String(item.id) === String(courseId));
   if (!course) return { status: 404, error: 'Curso nao encontrado.' };
@@ -4090,6 +4104,16 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, result.student);
+    return;
+  }
+
+  if (req.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'students' && parts[2] && !parts[3]) {
+    const result = deleteStudentRecord(parts[2], req.auth || {});
+    if (result.error) {
+      sendJson(res, result.status, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
     return;
   }
 
