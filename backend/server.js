@@ -245,16 +245,20 @@ let auditLogs = Array.isArray(initialData.auditLogs) ? initialData.auditLogs : [
 let users = mergeEnvUsers(initialData.users || []);
 
 const LEGACY_COURSE_NAME_ALIASES = new Map([
-  ['NR-10 SEP - Segurança no Sistema Elétrico de Potência', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
-  ['NR-10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
-  ['NR10 SEP - Segurança no Sistema Elétrico de Potência', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
-  ['NR10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
-  ['NR-10 - Segurança em Instalações e Serviços em Eletricidade', 'NR10 - Segurança em Instalações e Serviços em Eletricidade'],
-  ['NR-35 - Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
-  ['NR-35 - Segurança em Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
-  ['NR-35 - Reciclagem Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
-  ['NR35 - Reciclagem Trabalho em Altura', 'NR35 - Segurança em Trabalho em Altura'],
-  ['NR-18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT'],
+  ['NR-10 SEP - Segurança no Sistema Elétrico de Potência', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR10 SEP - Segurança no Sistema Elétrico de Potência', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR10 SEP - SEGURANÇA NO SISTEMA ELÉTRICO DE POTÊNCIA', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR10 - Segurança em Instalações e Serviços em Eletricidade', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-10 - Segurança em Instalações e Serviços em Eletricidade', 'NR-10 - Segurança em Instalações e Serviços em Eletricidade'],
+  ['NR-35 - Trabalho em Altura', 'NR-35 - Trabalho em Altura'],
+  ['NR-35 - Segurança em Trabalho em Altura', 'NR-35 - Trabalho em Altura'],
+  ['NR-35 - Reciclagem Trabalho em Altura', 'NR-35 - Trabalho em Altura'],
+  ['NR35 - Reciclagem Trabalho em Altura', 'NR-35 - Trabalho em Altura'],
+  ['NR35 - Segurança em Trabalho em Altura', 'NR-35 - Trabalho em Altura'],
+  ['NR18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR-18 - Operação de Plataforma de Trabalho Aéreo (PTA)'],
+  ['NR-18 - SEGURANÇA NA OPERAÇÃO DE PLATAFORMAS ELEVATÓRIA - PEMT', 'NR-18 - Operação de Plataforma de Trabalho Aéreo (PTA)'],
+  ['NR-18 - Condições e Meio Ambiente na Construção', 'NR-18 - Operação de Plataforma de Trabalho Aéreo (PTA)'],
 ]);
 
 const LEGACY_COURSE_CODE_ALIASES = new Map([
@@ -1255,6 +1259,14 @@ function clearCertificateAuthorization(student) {
   return updated;
 }
 
+function isCertificateIssued(student = {}) {
+  return student.statusCertificado === 'aprovado' && Boolean(
+    student.certificadoAssinaturaCodigo
+    || student.certificadoAutorizadoEm
+    || student.certificadoChecklistConfirmadoEm
+  );
+}
+
 function applyStudentStatus(student, field, value, motivo = null, actorName = 'Responsável DRM') {
   const updated = { ...student, [field]: value };
 
@@ -1345,6 +1357,30 @@ function normalizeCertificateContext(context = {}) {
     lockChecklist,
   };
   return normalized;
+}
+
+function certificateContextFromStudent(student = {}) {
+  return normalizeCertificateContext({
+    temInstrutor: student.temInstrutor !== undefined ? student.temInstrutor : true,
+    instrutorNome: student.instrutorNome || student.instrutor || '',
+    instrutorCargo: student.instrutorCargo || student.cargoInstrutor || '',
+    instrutorRegistro: student.instrutorRegistro || student.registroInstrutor || student.creaInstrutor || student.cftInstrutor || '',
+    local: student.certificadoChecklistLocal || student.local || '',
+    data: student.certificadoChecklistData || student.data || '',
+    duracao: student.certificadoChecklistDuracao || student.duracao || '',
+    horarioInicio: student.certificadoChecklistHorarioInicio || student.horarioInicio || '',
+    periodoInicio: student.certificadoChecklistPeriodoInicio || student.periodoInicio || student.certificadoChecklistData || student.data || '',
+    periodoFim: student.certificadoChecklistPeriodoFim || student.periodoFim || student.certificadoChecklistData || student.data || '',
+    textoCertificado: student.textoCertificado || '',
+    conteudoProgramatico: student.certificadoChecklistConteudoProgramatico || student.conteudoProgramatico || '',
+    lockChecklist: student.certificadoChecklistLocked !== false,
+  });
+}
+
+function hasValidCertificateContext(ctx = {}) {
+  if (!ctx.local || !ctx.data || !ctx.duracao) return false;
+  if (ctx.temInstrutor && (!ctx.instrutorNome || !ctx.instrutorCargo || !ctx.instrutorRegistro)) return false;
+  return true;
 }
 
 function listCertificateDrafts(auth = {}) {
@@ -1493,6 +1529,12 @@ function certificateFileName(student = {}) {
   return `${sanitizeFileName(student.nome)}-${date}-${sanitizeFileName(student.nomeCurso)}.pdf`;
 }
 
+function certificateFolderName(student = {}) {
+  const norm = detectCourseNorm(student.nomeCurso);
+  const match = String(norm || '').match(/^NR(\d{1,2})$/i);
+  return match ? `NR-${match[1].padStart(2, '0')}` : 'OUTROS';
+}
+
 function certificateTopics(student = {}) {
   const norm = detectCourseNorm(student.nomeCurso);
   return COURSE_SCHEDULE_TEMPLATES[norm] || [
@@ -1580,6 +1622,16 @@ function extractCertificateNorm(curso = '') {
   return match ? `NR\n${match[1]}` : 'NR';
 }
 
+function extractCertificateNormLabel(curso = '') {
+  const match = String(curso).match(/\bNR[-\s]?(\d{1,2})\b/i);
+  return match ? `NR-${match[1].padStart(2, '0')}` : 'NR';
+}
+
+function certificateDurationHours(value = '') {
+  const match = String(value || '').match(/\d+(?:[,.]\d+)?/);
+  return match ? match[0].replace(',', '.') : String(value || '').replace(/\s*horas?\s*/i, '').trim() || '8';
+}
+
 function certificatePdfValues(config = {}, student = {}) {
   const cfg = mergeCertificateConfig(config);
   const data = { ...sampleCertificateStudent, ...student };
@@ -1590,6 +1642,10 @@ function certificatePdfValues(config = {}, student = {}) {
   const instrutorRegistro = temInstrutor ? data.instrutorRegistro || data.registroInstrutor || data.creaInstrutor || data.cftInstrutor || '' : '';
   const periodoInicio = formatDateBR(data.periodoInicio || data.data);
   const periodoFim = formatDateBR(data.periodoFim || data.data);
+  const unidade = data.unidade || data.filial || data.local || '';
+  const cidade = data.cidade || data.certificadoCidade || data.localAssinaturaCidade || cfg.assinaturaDigitalLocal || cfg.endereco;
+  const normaTexto = extractCertificateNormLabel(data.nomeCurso);
+  const cargaHoraria = certificateDurationHours(data.duracao || '8 horas');
   const templateValues = {
     nome: data.nome,
     cpf: data.cpf || '000.000.000-00',
@@ -1599,19 +1655,35 @@ function certificatePdfValues(config = {}, student = {}) {
     instrutorCargo,
     instrutorRegistro,
     duracao: data.duracao || '8 horas',
-    local: data.local || '',
-    cidade: data.local || cfg.endereco,
+    cargaHoraria,
+    empresa: data.empresa || cfg.nomeEmpresa,
+    unidade,
+    local: unidade,
+    cidade,
     data: formatDateBR(data.data),
     dataExtenso: formatLongDateBR(data.data),
     hora: data.horarioInicio ? `, às ${data.horarioInicio}` : '',
     periodo: periodoInicio === periodoFim ? periodoFim : `${periodoInicio} a ${periodoFim}`,
     norma: extractCertificateNorm(data.nomeCurso),
+    normaTexto,
     validadeAnos: cfg.validadeAnos || '2',
     cnpj: cfg.cnpj,
     responsavel: data.certificadoAutorizadoPor || cfg.nomeResponsavel,
     localAssinatura: data.certificadoAssinaturaLocal || cfg.assinaturaDigitalLocal || cfg.endereco,
     assinaturaDataHora: formatDateTimeBR(data.certificadoAutorizadoEm || cfg.assinaturaDigitalAutorizadaEm),
     assinaturaCodigo: manualSignature ? '' : data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
+    NOME_COMPLETO: data.nome,
+    CPF: data.cpf || '000.000.000-00',
+    NOME_CURSO: data.nomeCurso,
+    CURSO: data.nomeCurso,
+    CARGA_HORARIA: cargaHoraria,
+    EMPRESA: data.empresa || cfg.nomeEmpresa,
+    UNIDADE: unidade,
+    LOCAL: unidade,
+    CIDADE: cidade,
+    DATA_REALIZACAO: formatLongDateBR(data.data),
+    DATA_CURSO: formatLongDateBR(data.data),
+    NORMA: normaTexto,
   };
 
   const defaultTopics = certificateTopics(data).map((topic, index) => `${index + 1}. ${topic};`).join('\n');
@@ -1624,9 +1696,7 @@ function certificatePdfValues(config = {}, student = {}) {
     nrBadge: renderCertificateTemplate(cfg.normaBadge, templateValues),
     nrBadgeConteudo: renderCertificateTemplate(cfg.normaBadge, templateValues),
     titulo: cfg.tituloCertificado,
-    textoCertificado: data.textoCertificado
-      ? sanitizeCertificateNarrative(String(data.textoCertificado).trim())
-      : sanitizeCertificateNarrative(renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues)),
+    textoCertificado: sanitizeCertificateNarrative(renderCertificateTemplate(cfg.textoCertificadoModelo, templateValues)),
     dataLocal: buildSafeDetailsLine({
       cidade: templateValues.cidade,
       dataExtenso: templateValues.dataExtenso,
@@ -2712,6 +2782,13 @@ function updateClassStudentsStatus(id, payload) {
   if (!allowedStatusFields.has(field) || !allowedStatusValues.has(value)) {
     return { status: 400, error: 'Status invalido.' };
   }
+  const issuedStudents = students.filter(student => ids.includes(String(student.id)) && isCertificateIssued(student));
+  if (issuedStudents.length > 0) {
+    return {
+      status: 409,
+      error: `Alteração bloqueada: ${issuedStudents.length} certificado(s) já emitido(s) não podem ser alterados.`,
+    };
+  }
   const actor = actorLabel(payload);
   const actorRole = payload.actorRole || 'responsavel';
   const motivo = payload.motivo || (value === 'recusado' ? 'Recusado em lote pela análise da turma.' : null);
@@ -2807,6 +2884,10 @@ function updateStudentProfile(id, payload = {}) {
   if (index === -1) return { status: 404, error: 'Aluno nao encontrado.' };
 
   const student = students[index];
+  if (isCertificateIssued(student)) {
+    return { status: 409, error: 'Este aluno já possui certificado emitido. Edição bloqueada para manter integridade.' };
+  }
+
   const sameCpfRecords = students.filter(item => String(item.cpf || '').replace(/\D/g, '') === String(student.cpf || '').replace(/\D/g, ''));
   const editableRecords = sameCpfRecords.filter((item) => !item.certificadoChecklistConfirmadoEm && !item.certificadoEnviado);
   if (editableRecords.length === 0) {
@@ -2957,6 +3038,7 @@ function updateAttendance(courseId, payload) {
 
   students = students.map(student => {
     if (String(student.cursoId) !== String(courseId) || attendance[student.id] === undefined) return student;
+    if (isCertificateIssued(student)) return student;
     const presente = Boolean(attendance[student.id]);
     return {
       ...student,
@@ -3000,6 +3082,9 @@ async function updateStudentStatus(id, payload) {
   const index = students.findIndex(student => String(student.id) === String(id));
   if (index === -1) {
     return { status: 404, error: 'Aluno nao encontrado.' };
+  }
+  if (isCertificateIssued(students[index])) {
+    return { status: 409, error: 'Certificado já emitido. Alterações de status bloqueadas para manter integridade.' };
   }
   if (field === 'statusCertificado' && value === 'aprovado' && students[index].presente !== true && Number(students[index].presenca || 0) < 75) {
     return { status: 400, error: 'Certificado so pode ser liberado para aluno presente na chamada.' };
@@ -3066,6 +3151,16 @@ async function updateStudentStatus(id, payload) {
       registroInstrutor: temInstrutor ? String(confirm.instrutorRegistro || updated.registroInstrutor || '').trim() : '',
       certificadoCursoConfirmado: String(confirm.cursoNome || updated.nomeCurso || '').trim(),
       certificadoConfirmadoEm: new Date().toISOString(),
+      certificadoChecklistLocked: true,
+      certificadoChecklistConfirmadoEm: new Date().toISOString(),
+      certificadoChecklistLocal: String(confirm.local || updated.local || '').trim(),
+      certificadoChecklistData: String(confirm.data || updated.data || '').trim(),
+      certificadoChecklistDuracao: String(confirm.duracao || updated.duracao || '').trim(),
+      certificadoChecklistHorarioInicio: String(confirm.horarioInicio || updated.horarioInicio || '').trim(),
+      certificadoChecklistPeriodoInicio: String(confirm.periodoInicio || confirm.data || updated.periodoInicio || updated.data || '').trim(),
+      certificadoChecklistPeriodoFim: String(confirm.periodoFim || confirm.data || updated.periodoFim || updated.data || '').trim(),
+      certificadoChecklistConteudoProgramatico: String(confirm.conteudoProgramatico || updated.conteudoProgramatico || '').trim(),
+      certificadoChecklistActor: actor,
       certificadoEnviado: false,
       dataEnvio: null,
       certificadoEmailErro: null,
@@ -3131,7 +3226,8 @@ async function markCertificateSent(id) {
   let updated = students[index];
   if (updated.statusCertificado === 'aprovado') {
     try {
-      const emailResult = await sendCertificateEmail(updated);
+      const certificateContext = certificateContextFromStudent(updated);
+      const emailResult = await sendCertificateEmail(updated, { certificateContext });
       updated = {
         ...updated,
         certificadoEnviado: emailResult.sent,
@@ -3160,7 +3256,9 @@ async function certificatePdfForStudent(id) {
   const student = students.find(item => String(item.id) === String(id));
   if (!student) return { status: 404, error: 'Aluno nao encontrado.' };
   if (student.statusCertificado !== 'aprovado') return { status: 400, error: 'Certificado nao esta aprovado.' };
-  const pdf = await generateCertificatePdf(student);
+  const certificateContext = certificateContextFromStudent(student);
+  const signatureType = student.assinaturaTipo === 'manual' ? 'manual' : 'digital';
+  const pdf = await generateCertificatePdf(student, { signatureType, certificateContext });
   return { pdf, filename: certificateFileName(student) };
 }
 
@@ -3180,12 +3278,10 @@ async function exportCertificates(payload) {
     .map(id => students.find(student => String(student.id) === String(id)))
     .filter(Boolean);
   if (selected.length === 0) return { status: 404, error: 'Nenhum aluno encontrado.' };
-  if (selected.length > 1) {
-    return { status: 400, error: 'Para manter o controle da validação, a emissão é permitida para 1 certificado por vez.' };
-  }
   const shouldEmail = action === 'email' || action === 'both';
   const shouldZip = action === 'zip';
   const shouldPdf = action === 'pdf' || action === 'both' || shouldZip;
+  const shouldReturnZip = shouldZip || selected.length > 1;
   const certificateContext = payload.certificateContext || null;
   const courseConfirmations = Array.isArray(payload.courseConfirmations) ? payload.courseConfirmations : [];
   const confirmationByCourseId = new Map(
@@ -3203,26 +3299,29 @@ async function exportCertificates(payload) {
     }
   }
 
-  const validateContext = (ctx = {}) => {
-    if (!ctx.local || !ctx.data || !ctx.duracao) return false;
-    if (ctx.temInstrutor && (!ctx.instrutorNome || !ctx.instrutorCargo || !ctx.instrutorRegistro)) return false;
-    return true;
+  const normalizedCertificateContext = certificateContext ? normalizeCertificateContext(certificateContext) : null;
+  const getEffectiveCtx = (student) => {
+    const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
+    if (byCourseCtx) return byCourseCtx;
+    if (normalizedCertificateContext) return normalizedCertificateContext;
+    return certificateContextFromStudent(student);
   };
   const baseSelected = selected[0];
   if (!baseSelected) return { status: 404, error: 'Nenhum aluno encontrado.' };
 
-  const selectedForProcessing = shouldZip
+  const selectedForProcessing = shouldZip && selected.length === 1
     ? students.filter(student => String(student.cpf || '').trim() === String(baseSelected.cpf || '').trim())
-    : [baseSelected];
+    : shouldReturnZip
+      ? selected
+      : [baseSelected];
   const approvedForProcessing = selectedForProcessing.filter(student => student.statusCertificado === 'aprovado');
   if (approvedForProcessing.length === 0) {
     return { status: 400, error: `Nenhum certificado aprovado encontrado para ${baseSelected.nome}.` };
   }
 
   for (const student of approvedForProcessing) {
-    const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
-    const effectiveCtx = byCourseCtx || (certificateContext ? normalizeCertificateContext(certificateContext) : null);
-    if (!effectiveCtx || !validateContext(effectiveCtx)) {
+    const effectiveCtx = getEffectiveCtx(student);
+    if (!effectiveCtx || !hasValidCertificateContext(effectiveCtx)) {
       return { status: 400, error: `Confirme os dados do curso ${student.nomeCurso} antes de emitir.` };
     }
   }
@@ -3232,9 +3331,12 @@ async function exportCertificates(payload) {
   const now = new Date().toISOString();
 
   for (const student of approvedForProcessing) {
-    const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
-    const effectiveCtx = byCourseCtx || (certificateContext ? normalizeCertificateContext(certificateContext) : null);
+    const effectiveCtx = getEffectiveCtx(student);
     if (!effectiveCtx) continue;
+    if (isCertificateIssued(student)) {
+      updatedById.set(String(student.id), student);
+      continue;
+    }
     const lockChecklist = effectiveCtx.lockChecklist !== false;
     updatedById.set(String(student.id), {
       ...student,
@@ -3257,18 +3359,17 @@ async function exportCertificates(payload) {
     for (const student of approvedForProcessing) {
       let updated = updatedById.get(String(student.id)) || student;
       try {
-        const byCourseCtx = confirmationByCourseId.get(String(student.cursoId || '').trim()) || null;
-        const effectiveCtx = byCourseCtx || certificateContext;
-        const emailResult = await sendCertificateEmail(student, { signatureType, certificateContext: effectiveCtx });
+        const effectiveCtx = getEffectiveCtx(student);
+        const emailResult = await sendCertificateEmail(updated, { signatureType, certificateContext: effectiveCtx });
         updated = {
-          ...student,
+          ...updated,
           certificadoEnviado: emailResult.sent,
-          dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : student.dataEnvio || null,
+          dataEnvio: emailResult.sent ? new Date().toISOString().split('T')[0] : updated.dataEnvio || null,
           certificadoEmailErro: emailResult.sent ? null : emailResult.error,
         };
       } catch (error) {
         updated = {
-          ...student,
+          ...updated,
           certificadoEmailErro: error.message || 'Erro ao enviar certificado por e-mail.',
         };
       }
@@ -3308,23 +3409,24 @@ async function exportCertificates(payload) {
   }
 
   const current = updatedById.get(String(baseSelected.id)) || baseSelected;
-  const currentCtx = confirmationByCourseId.get(String(current.cursoId || '').trim()) || certificateContext;
-  const pdf = await generateCertificatePdf(current, { signatureType, certificateContext: currentCtx });
-  if (shouldZip) {
+  if (shouldReturnZip) {
     const zip = new JSZip();
     for (const student of approvedForProcessing) {
       const certStudent = updatedById.get(String(student.id)) || student;
-      const certCtx = confirmationByCourseId.get(String(certStudent.cursoId || '').trim()) || certificateContext;
+      const certCtx = getEffectiveCtx(certStudent);
       const certPdf = await generateCertificatePdf(certStudent, { signatureType, certificateContext: certCtx });
-      zip.file(certificateFileName(certStudent), certPdf);
+      zip.file(`${certificateFolderName(certStudent)}/${certificateFileName(certStudent)}`, certPdf);
     }
     const zipBuffer = await zip.generateAsync({ type: 'nodebuffer' });
+    const companyName = String(payload.companyName || current.empresa || current.nome || 'certificados').trim();
     return {
       buffer: zipBuffer,
       contentType: 'application/zip',
-      filename: `${sanitizeFileName(current.nome)}-todos-certificados.zip`,
+      filename: `${sanitizeFileName(companyName)}-certificados.zip`,
     };
   }
+  const currentCtx = getEffectiveCtx(current);
+  const pdf = await generateCertificatePdf(current, { signatureType, certificateContext: currentCtx });
   return { buffer: pdf, contentType: 'application/pdf', filename: certificateFileName(current) };
 }
 
@@ -3358,7 +3460,8 @@ async function markAllCertificatesSent() {
     }
 
     try {
-      const emailResult = await sendCertificateEmail(student);
+      const certificateContext = certificateContextFromStudent(student);
+      const emailResult = await sendCertificateEmail(student, { certificateContext });
       nextStudents.push({
         ...student,
         certificadoEnviado: emailResult.sent,

@@ -138,15 +138,30 @@ function extractNorma(curso = '') {
   return match ? `NR\n${match[1]}` : 'NR';
 }
 
+function extractNormaLabel(curso = '') {
+  const match = String(curso).match(/\bNR[-\s]?(\d{1,2})\b/i);
+  return match ? `NR-${match[1].padStart(2, '0')}` : 'NR';
+}
+
+function durationHours(value = '') {
+  const match = String(value || '').match(/\d+(?:[,.]\d+)?/);
+  return match ? match[0].replace(',', '.') : String(value || '').replace(/\s*horas?\s*/i, '').trim() || '8';
+}
+
 function certificateValues(config = {}, aluno = {}) {
   const cfg = mergeCertificateConfig(config);
   const data = { ...sampleCertificateStudent, ...aluno };
+  const manualSignature = data.assinaturaTipo === 'manual';
   const temInstrutor = data.temInstrutor !== false;
   const instrutorNome = temInstrutor ? data.instrutorNome || data.nomeInstrutor || data.instrutor || 'Instrutor não informado' : '';
   const instrutorCargo = temInstrutor ? data.instrutorCargo || data.cargoInstrutor || data.instrutorFuncao || 'Técnico/Engenheiro responsável' : '';
   const instrutorRegistro = temInstrutor ? data.instrutorRegistro || data.registroInstrutor || data.creaInstrutor || data.cftInstrutor || 'CREA/CFT não informado' : '';
   const periodoInicio = formatDate(data.periodoInicio || data.data);
   const periodoFim = formatDate(data.periodoFim || data.data);
+  const unidade = data.unidade || data.filial || data.local || 'unidade definida';
+  const cidade = data.cidade || data.certificadoCidade || data.localAssinaturaCidade || cfg.assinaturaDigitalLocal || cfg.endereco;
+  const normaTexto = extractNormaLabel(data.nomeCurso);
+  const cargaHoraria = durationHours(data.duracao || '8 horas');
   const templateValues = {
     nome: data.nome,
     cpf: data.cpf || '000.000.000-00',
@@ -156,19 +171,35 @@ function certificateValues(config = {}, aluno = {}) {
     instrutorCargo,
     instrutorRegistro,
     duracao: data.duracao || '8 horas',
-    local: data.local || 'local definido',
-    cidade: data.local || cfg.endereco,
+    cargaHoraria,
+    empresa: data.empresa || cfg.nomeEmpresa,
+    unidade,
+    local: unidade,
+    cidade,
     data: formatDate(data.data),
     dataExtenso: formatLongDate(data.data),
     hora: data.horarioInicio ? `, às ${data.horarioInicio}` : '',
     periodo: periodoInicio === periodoFim ? periodoFim : `${periodoInicio} a ${periodoFim}`,
     norma: extractNorma(data.nomeCurso),
+    normaTexto,
     validadeAnos: cfg.validadeAnos || '2',
     cnpj: cfg.cnpj,
     responsavel: data.certificadoAutorizadoPor || cfg.nomeResponsavel,
     localAssinatura: data.certificadoAssinaturaLocal || cfg.assinaturaDigitalLocal || cfg.endereco,
     assinaturaDataHora: formatDateTime(data.certificadoAutorizadoEm || cfg.assinaturaDigitalAutorizadaEm),
-    assinaturaCodigo: data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
+    assinaturaCodigo: manualSignature ? '' : data.certificadoAssinaturaCodigo || cfg.assinaturaDigitalCodigo || 'DRM-AUTH-000000',
+    NOME_COMPLETO: data.nome,
+    CPF: data.cpf || '000.000.000-00',
+    NOME_CURSO: data.nomeCurso,
+    CURSO: data.nomeCurso,
+    CARGA_HORARIA: cargaHoraria,
+    EMPRESA: data.empresa || cfg.nomeEmpresa,
+    UNIDADE: unidade,
+    LOCAL: unidade,
+    CIDADE: cidade,
+    DATA_REALIZACAO: formatLongDate(data.data),
+    DATA_CURSO: formatLongDate(data.data),
+    NORMA: normaTexto,
   };
 
   return {
@@ -186,7 +217,9 @@ function certificateValues(config = {}, aluno = {}) {
       hora: templateValues.hora,
     }),
     assinaturaResponsavel: cfg.nomeResponsavel,
-    assinaturaValidade: renderTemplate(cfg.assinaturaValidacaoModelo, templateValues),
+    assinaturaValidade: manualSignature
+      ? `Certificado assinado manualmente por ${templateValues.responsavel}.`
+      : renderTemplate(cfg.assinaturaValidacaoModelo, templateValues),
     cargoResponsavel: cfg.cargoResponsavel,
     creaResponsavel: cfg.creaResponsavel,
     instrutorNome,
@@ -199,7 +232,7 @@ function certificateValues(config = {}, aluno = {}) {
     marcaCentral: cfg.assinaturaEmpresaTexto,
     conteudoTitulo: cfg.conteudoTitulo,
     conteudoSubtitulo: renderTemplate(cfg.conteudoSubtitulo, templateValues),
-    conteudoProgramatico: cfg.conteudoProgramatico,
+    conteudoProgramatico: String(data.conteudoProgramatico || '').trim() || cfg.conteudoProgramatico,
     rodape: cfg.textoRodape,
   };
 }

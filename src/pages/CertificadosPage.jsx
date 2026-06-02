@@ -93,7 +93,7 @@ export default function CertificadosPage() {
   const [search, setSearch] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
   const [action, setAction] = useState('both');
-  const [signatureType, setSignatureType] = useState('digital');
+  const [signatureType, setSignatureType] = useState('manual');
   const [processing, setProcessing] = useState(false);
   const [statusMessage, setStatusMessage] = useState(null);
   const [layout, setLayout] = useState(defaultCertificateLayout);
@@ -176,6 +176,9 @@ export default function CertificadosPage() {
       return [student.nome, student.cpf, student.empresa, student.nomeCurso, student.certificadoAssinaturaCodigo]
         .some(value => String(value || '').toLowerCase().includes(term));
     });
+  const visibleIds = display.map(student => String(student.id));
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedIds.includes(id));
+  const grupoMateusStudents = aprovados.filter(student => String(student.empresa || '').trim().toLowerCase() === 'grupo mateus');
   const selectedStudents = aprovados.filter(student => selectedIds.includes(String(student.id)));
   const selectedPendencies = selectedStudents.flatMap(student => {
     const items = [];
@@ -187,17 +190,20 @@ export default function CertificadosPage() {
 
   const toggleStudent = (studentId) => {
     const id = String(studentId);
-    setSelectedIds(prev => (prev.includes(id) ? [] : [id]));
+    setSelectedIds(prev => (prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]));
   };
 
   const selectVisible = () => {
-    const visibleIds = display.map(student => String(student.id));
     if (visibleIds.length === 0) {
       setSelectedIds([]);
       return;
     }
-    const first = visibleIds[0];
-    setSelectedIds(prev => (prev.includes(first) ? [] : [first]));
+    setSelectedIds(prev => {
+      if (visibleIds.every(id => prev.includes(id))) {
+        return prev.filter(id => !visibleIds.includes(id));
+      }
+      return [...new Set([...prev, ...visibleIds])];
+    });
   };
 
   const downloadBlob = ({ blob, filename }) => {
@@ -239,6 +245,56 @@ export default function CertificadosPage() {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const downloadCertificateIds = async (ids, successText, companyName = '') => {
+    if (!ids.length) {
+      setStatusMessage({ type: 'error', text: 'Nenhum certificado aprovado encontrado para baixar.' });
+      return;
+    }
+    setProcessing(true);
+    setStatusMessage(null);
+    try {
+      const result = await api.exportCertificates({
+        studentIds: ids,
+        action: 'pdf',
+        signatureType: 'manual',
+        companyName,
+        actor: user?.name || 'Responsável DRM',
+        actorRole: user?.role || 'responsavel',
+      });
+      downloadBlob(result);
+      setStatusMessage({ type: 'success', text: successText });
+      await refreshData();
+    } catch (error) {
+      setStatusMessage({ type: 'error', text: error.message || 'Não foi possível baixar os certificados.' });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDownloadSelected = () => {
+    downloadCertificateIds(
+      selectedIds,
+      `${selectedIds.length} certificado(s) baixado(s) em lote.`,
+      selectedIds.length > 1 ? 'certificados-selecionados' : '',
+    );
+  };
+
+  const handleDownloadAllGrupoMateus = () => {
+    downloadCertificateIds(
+      grupoMateusStudents.map(student => String(student.id)),
+      'Todos os certificados do Grupo Mateus foram baixados.',
+      'Grupo Mateus',
+    );
+  };
+
+  const handleEmitAllGrupoMateus = () => {
+    downloadCertificateIds(
+      grupoMateusStudents.map(student => String(student.id)),
+      'Todos os certificados do Grupo Mateus foram emitidos.',
+      'Grupo Mateus',
+    );
   };
 
   useEffect(() => {
@@ -307,7 +363,7 @@ export default function CertificadosPage() {
       <div className="card space-y-4">
         <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
           <p className="text-xs text-amber-800">
-            Emissão controlada: para segurança, o sistema permite emitir/enviar <strong>1 certificado por vez</strong>.
+            Emissão padrão: selecione certificados individuais ou baixe todos da empresa em ZIP.
           </p>
         </div>
         {monthNumber && (
@@ -369,14 +425,43 @@ export default function CertificadosPage() {
           </div>
         </div>
         <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={selectVisible}
-            className="btn-secondary text-sm whitespace-nowrap"
-          >
-            <CheckSquare className="w-4 h-4" />
-            Selecionar primeiro aluno exibido
-          </button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={selectVisible}
+              className="btn-secondary text-sm whitespace-nowrap"
+            >
+              {allVisibleSelected ? <Square className="w-4 h-4" /> : <CheckSquare className="w-4 h-4" />}
+              {allVisibleSelected ? 'Limpar Seleção' : 'Selecionar Todos'}
+            </button>
+            <button
+              type="button"
+              onClick={handleEmitAllGrupoMateus}
+              disabled={processing || grupoMateusStudents.length === 0}
+              className="btn-secondary text-sm whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Archive className="w-4 h-4" />
+              Emitir Todos os Certificados
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadSelected}
+              disabled={processing || selectedIds.length === 0}
+              className="btn-secondary text-sm whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Download className="w-4 h-4" />
+              Baixar selecionados
+            </button>
+            <button
+              type="button"
+              onClick={handleDownloadAllGrupoMateus}
+              disabled={processing || grupoMateusStudents.length === 0}
+              className="btn-primary text-sm whitespace-nowrap disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <Archive className="w-4 h-4" />
+              Baixar Todos os Certificados
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
