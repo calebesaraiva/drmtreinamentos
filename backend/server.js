@@ -3018,16 +3018,31 @@ function deleteTestClass(id, payload = {}) {
   return { ok: true, removedClassId: id };
 }
 
-function deleteStudentRecord(id, auth = {}) {
+function deleteStudentRecord(id, auth = {}, payload = {}) {
   if (!privilegedRoles.has(String(auth?.role || '').toLowerCase())) {
     return { status: 403, error: 'Você não tem permissão para remover aluno.' };
   }
   const student = students.find(item => String(item.id) === String(id));
   if (!student) return { status: 404, error: 'Aluno nao encontrado.' };
-  if (isCertificateIssued(student)) {
+  const forceIssuedDeletion = payload.forceIssuedDeletion === true;
+  const reason = String(payload.reason || '').trim();
+  if (isCertificateIssued(student) && (!forceIssuedDeletion || !reason)) {
     return { status: 409, error: 'Este aluno já possui certificado emitido. Remoção bloqueada para manter integridade.' };
   }
   students = students.filter(item => String(item.id) !== String(id));
+  auditLogs = [
+    {
+      id: randomUUID(),
+      action: isCertificateIssued(student) ? 'student:force-delete-issued' : 'student:delete',
+      actor: auth?.name || auth?.username || 'Sistema',
+      actorRole: auth?.role || '',
+      entity: 'student',
+      entityId: String(id),
+      detail: reason || 'Aluno removido.',
+      createdAt: new Date().toISOString(),
+    },
+    ...auditLogs,
+  ].slice(0, AUDIT_MAX_ITEMS);
   persistData();
   return { ok: true, removedStudentId: id };
 }
@@ -4108,7 +4123,12 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'DELETE' && parts[0] === 'api' && parts[1] === 'students' && parts[2] && !parts[3]) {
-    const result = deleteStudentRecord(parts[2], req.auth || {});
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = deleteStudentRecord(parts[2], req.auth || {}, body || {});
     if (result.error) {
       sendJson(res, result.status, { error: result.error });
       return;
