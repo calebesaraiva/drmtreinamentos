@@ -18,12 +18,13 @@ jobs:
 
       - name: Create deploy archive
         run: |
-          ARCHIVE_PATH="/tmp/drm-deploy.tar.gz"
+          ARCHIVE_PATH="drm-deploy.tar.gz"
           rm -f "$ARCHIVE_PATH"
           tar -czf "$ARCHIVE_PATH" \
             --exclude .git \
             --exclude node_modules \
             --exclude dist \
+            --exclude drm-deploy.tar.gz \
             --exclude tmp-cert-tests \
             .
 
@@ -34,7 +35,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || '22' }}
-          source: "/tmp/drm-deploy.tar.gz"
+          source: "drm-deploy.tar.gz"
           target: "/tmp"
 
       - name: Deploy on VPS
