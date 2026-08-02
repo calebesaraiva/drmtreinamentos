@@ -126,6 +126,7 @@ function fallbackData() {
       certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
+      learningStates: {},
       users: defaultUsers,
     };
   }
@@ -139,6 +140,7 @@ function fallbackData() {
       certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
+      learningStates: {},
       users: defaultUsers,
     };
   }
@@ -153,6 +155,7 @@ function fallbackData() {
       certificateDrafts: Array.isArray(parsed.certificateDrafts) ? parsed.certificateDrafts : [],
       companyChangeRequests: Array.isArray(parsed.companyChangeRequests) ? parsed.companyChangeRequests : [],
       auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
+      learningStates: parsed.learningStates && typeof parsed.learningStates === 'object' ? parsed.learningStates : {},
       users: Array.isArray(parsed.users) ? parsed.users : defaultUsers,
     };
   } catch {
@@ -164,6 +167,7 @@ function fallbackData() {
       certificateDrafts: [],
       companyChangeRequests: [],
       auditLogs: [],
+      learningStates: {},
       users: defaultUsers,
     };
   }
@@ -198,6 +202,9 @@ async function loadData() {
       certificateDrafts: Array.isArray(existing.rows[0].data.certificateDrafts) ? existing.rows[0].data.certificateDrafts : [],
       companyChangeRequests: Array.isArray(existing.rows[0].data.companyChangeRequests) ? existing.rows[0].data.companyChangeRequests : [],
       auditLogs: Array.isArray(existing.rows[0].data.auditLogs) ? existing.rows[0].data.auditLogs : [],
+      learningStates: existing.rows[0].data.learningStates && typeof existing.rows[0].data.learningStates === 'object'
+        ? existing.rows[0].data.learningStates
+        : {},
       users: mergeEnvUsers(storedUsers),
     };
   }
@@ -242,6 +249,7 @@ let certificateSettings = normalizeCertificateSettings(initialData.certificateSe
 let certificateDrafts = Array.isArray(initialData.certificateDrafts) ? initialData.certificateDrafts : [];
 let companyChangeRequests = Array.isArray(initialData.companyChangeRequests) ? initialData.companyChangeRequests : [];
 let auditLogs = Array.isArray(initialData.auditLogs) ? initialData.auditLogs : [];
+let learningStates = initialData.learningStates && typeof initialData.learningStates === 'object' ? initialData.learningStates : {};
 let users = mergeEnvUsers(initialData.users || []);
 
 const LEGACY_COURSE_NAME_ALIASES = new Map([
@@ -443,7 +451,7 @@ courses = namingSync.courses;
 classes = namingSync.classes;
 
 function persistData() {
-  const payload = { students, courses, classes, certificateSettings, certificateDrafts, companyChangeRequests, auditLogs, users };
+  const payload = { students, courses, classes, certificateSettings, certificateDrafts, companyChangeRequests, auditLogs, learningStates, users };
   if (!dbPool) {
     writeFileSync(DATA_FILE, JSON.stringify(payload, null, 2));
     return;
@@ -724,7 +732,7 @@ async function readJson(req) {
   }
 }
 
-const allowedUserRoles = new Set(['admin', 'responsavel', 'usuario', 'instrutor', 'empresario']);
+const allowedUserRoles = new Set(['admin', 'responsavel', 'usuario', 'instrutor', 'empresario', 'aluno']);
 
 function normalizeUserRole(role) {
   const normalized = String(role || '').trim().toLowerCase();
@@ -744,6 +752,345 @@ function currentUserFromAuth(auth = {}) {
 
 function isBusinessRole(auth = {}) {
   return String(auth.role || '').toLowerCase() === 'empresario';
+}
+
+function isStudentRole(auth = {}) {
+  return String(auth.role || '').toLowerCase() === 'aluno';
+}
+
+function normalizeSlug(value = '') {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function toMinutes(durationValue = '') {
+  const raw = String(durationValue || '').trim().toLowerCase();
+  if (!raw) return 0;
+  const hoursMatch = raw.match(/(\d+(?:[.,]\d+)?)\s*h/);
+  if (hoursMatch) return Math.round(Number(hoursMatch[1].replace(',', '.')) * 60);
+  const minMatch = raw.match(/(\d+)\s*min/);
+  if (minMatch) return Number(minMatch[1]);
+  return 0;
+}
+
+function formatMinutes(totalMinutes = 0) {
+  const safe = Math.max(0, Number(totalMinutes) || 0);
+  const hours = Math.floor(safe / 60);
+  const minutes = safe % 60;
+  if (!hours) return `${minutes}min`;
+  return `${hours}h ${String(minutes).padStart(2, '0')}m`;
+}
+
+function formatFileSize(bytes = 0) {
+  const value = Number(bytes) || 0;
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+}
+
+function buildLessonTemplates(course = {}) {
+  const title = String(course.nomeCurso || 'Treinamento DRM');
+  const normalized = title.toUpperCase();
+  if (normalized.includes('NR-18') || normalized.includes('NR18')) {
+    return [
+      { order: 1, title: 'Abertura do treinamento e orientações iniciais', durationMin: 120 },
+      { order: 2, title: 'Conteúdo técnico principal', durationMin: 180 },
+      { order: 3, title: 'Prática, dúvidas e revisão', durationMin: 120 },
+      { order: 4, title: 'Operação segura da plataforma', durationMin: 150 },
+      { order: 5, title: 'Inspeção, manutenção e checklists', durationMin: 90 },
+    ];
+  }
+
+  const topics = String(course.conteudoProgramatico || '')
+    .split(/\n+/)
+    .map(item => item.replace(/^\s*\d+[.)-]?\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
+  if (topics.length >= 4) {
+    return topics.map((topic, index) => ({
+      order: index + 1,
+      title: topic,
+      durationMin: [90, 120, 90, 120, 75][index] || 90,
+    }));
+  }
+
+  return [
+    { order: 1, title: 'Boas-vindas e visão geral do curso', durationMin: 60 },
+    { order: 2, title: 'Conceitos e requisitos principais', durationMin: 120 },
+    { order: 3, title: 'Procedimentos e boas práticas', durationMin: 120 },
+    { order: 4, title: 'Aplicação prática no ambiente de trabalho', durationMin: 90 },
+    { order: 5, title: 'Checklist final e consolidação', durationMin: 60 },
+  ];
+}
+
+function buildStudentPortalBlueprint(course = {}) {
+  const lessons = buildLessonTemplates(course);
+  const courseMinutes = toMinutes(course.duracao || '') || lessons.reduce((sum, lesson) => sum + lesson.durationMin, 0);
+  const currentLessonOrder = Math.min(4, lessons.length);
+  const currentLesson = lessons.find(item => item.order === currentLessonOrder) || lessons[0];
+  const nextLesson = lessons.find(item => item.order === currentLessonOrder + 1) || lessons[lessons.length - 1];
+  const safeCourseName = String(course.nomeCurso || 'Treinamento DRM');
+  const slideTitle = currentLesson?.title || 'Conteúdo da aula';
+  const normalized = safeCourseName.toUpperCase();
+
+  return {
+    completionPercent: 65,
+    currentLessonOrder,
+    lessons,
+    slides: {
+      lessonOrder: currentLessonOrder,
+      updatedAt: '2025-08-02',
+      title: slideTitle,
+      bullets: [
+        'Visão geral dos riscos e da operação',
+        'Procedimentos críticos antes da elevação',
+        'Checklist de inspeção e liberação',
+        'Condutas seguras durante a atividade',
+      ],
+    },
+    video: {
+      lessonOrder: currentLessonOrder,
+      title: `Aula ${currentLessonOrder} - ${slideTitle}`,
+      description: normalized.includes('NR-18')
+        ? 'Assista ao vídeo com as boas práticas, procedimentos operacionais e pontos de atenção.'
+        : 'Assista à explicação principal da aula e revise os pontos operacionais destacados.',
+      duration: '15:32',
+    },
+    materials: [
+      { id: 'apostila', title: 'Apostila do curso', format: 'PDF', sizeBytes: 4200000, color: '#ef4444' },
+      { id: 'checklist', title: 'Checklist de inspeção', format: 'PDF', sizeBytes: 612000, color: '#22c55e' },
+      { id: 'manual', title: 'Manual do equipamento', format: 'PDF', sizeBytes: 3100000, color: '#3b82f6' },
+      { id: 'resumo', title: 'Resumo dos conteúdos', format: 'PDF', sizeBytes: 1300000, color: '#8b5cf6' },
+    ],
+    activities: [
+      { id: 'quiz', title: `Quiz - Aula ${currentLessonOrder}`, subtitle: '10 questões', status: 'em_andamento' },
+      { id: 'case', title: 'Estudo de caso', subtitle: 'Análise prática', status: 'pendente' },
+      { id: 'practice', title: 'Exercício prático', subtitle: 'Registro de execução', status: 'pendente' },
+      { id: 'checklist-final', title: 'Checklist de conclusão', subtitle: 'Verificação final', status: 'pendente' },
+    ],
+    validation: [
+      { id: 'carga-horaria', title: 'Carga horária', detail: `12h 00m / ${formatMinutes(courseMinutes)}`, status: 'concluido' },
+      { id: 'presenca', title: 'Presença registrada', detail: '12h 00m (66%)', status: 'concluido' },
+      { id: 'progresso', title: 'Progresso das aulas', detail: `13 de ${Math.max(lessons.length * 4, 20)} aulas`, status: 'atencao' },
+      { id: 'nota', title: 'Nota mínima', detail: '7,0 pontos', status: 'pendente' },
+      { id: 'avaliacao-final', title: 'Avaliação final', detail: 'Não iniciada', status: 'pendente' },
+      { id: 'atividade-pratica', title: 'Atividade prática', detail: 'Não concluída', status: 'pendente' },
+      { id: 'certificado', title: 'Certificado', detail: 'Liberado após conclusão', status: 'pendente' },
+    ],
+    support: {
+      faqTitle: 'Dúvidas frequentes',
+      faqDescription: 'Tire suas dúvidas sobre o conteúdo do curso.',
+      forumTitle: 'Fórum / Suporte',
+      forumDescription: 'Converse com colegas e instrutores.',
+      helpTitle: 'Precisa de ajuda?',
+      helpDescription: 'Fale com nossa equipe de suporte.',
+    },
+    nextLesson: {
+      title: nextLesson?.title || currentLesson?.title || 'Próxima aula',
+      type: 'Teórica',
+      duration: `${nextLesson?.durationMin || currentLesson?.durationMin || 45} min`,
+    },
+  };
+}
+
+function getLearningStateKey(userId, courseId) {
+  return `${String(userId)}::${String(courseId)}`;
+}
+
+function getOrCreateLearningState(user = {}, course = {}, blueprint = null) {
+  const key = getLearningStateKey(user.id, course.id);
+  if (!learningStates[key]) {
+    const base = blueprint || buildStudentPortalBlueprint(course);
+    learningStates[key] = {
+      selectedCourseId: course.id,
+      completionPercent: base.completionPercent,
+      currentLessonOrder: base.currentLessonOrder,
+      completedLessonOrders: base.lessons.filter(item => item.order < base.currentLessonOrder).map(item => item.order),
+      activeActivityId: base.activities.find(item => item.status === 'em_andamento')?.id || base.activities[0]?.id || '',
+      activityStatuses: Object.fromEntries(base.activities.map(item => [item.id, item.status])),
+      openedMaterials: [],
+      lastViewedAt: new Date().toISOString(),
+    };
+    persistData();
+  }
+  return learningStates[key];
+}
+
+function buildStudentPortalPayload(auth = {}) {
+  const current = currentUserFromAuth(auth);
+  if (!current) return { status: 401, error: 'Usuário não encontrado.' };
+
+  const matchedStudents = students.filter((student) => {
+    if (current.studentId && String(student.id) === String(current.studentId)) return true;
+    if (current.email && String(student.email || '').trim().toLowerCase() === String(current.email).trim().toLowerCase()) return true;
+    return false;
+  });
+
+  const matchedCourses = courses.filter((course) => (
+    matchedStudents.some((student) => String(student.cursoId || '') === String(course.id))
+  ));
+
+  let availableCourses = matchedCourses;
+  let effectiveStudents = matchedStudents;
+
+  if (availableCourses.length === 0) {
+    const fallbackCourse = courses.find((course) => /NR[-\s]?18/i.test(String(course.nomeCurso || ''))) || courses[0];
+    if (!fallbackCourse) return { status: 404, error: 'Nenhum curso disponível para a área do aluno.' };
+    availableCourses = [fallbackCourse];
+    effectiveStudents = [{
+      id: current.studentId || `virtual-${current.id}`,
+      nome: current.name || 'Aluno DRM',
+      email: current.email || '',
+      cursoId: fallbackCourse.id,
+      nomeCurso: fallbackCourse.nomeCurso,
+      statusCadastro: 'aprovado',
+      statusCertificado: 'pendente',
+      empresa: current.empresa || fallbackCourse.empresaContratante || 'DRM Treinamentos',
+      presenca: 66,
+    }];
+  }
+
+  const activeCourseId = Number(current.selectedCourseId || availableCourses[0].id);
+  const activeCourse = availableCourses.find((course) => Number(course.id) === activeCourseId) || availableCourses[0];
+  const activeStudent = effectiveStudents.find((student) => String(student.cursoId || '') === String(activeCourse.id)) || effectiveStudents[0];
+  const blueprint = buildStudentPortalBlueprint(activeCourse);
+  const learningState = getOrCreateLearningState(current, activeCourse, blueprint);
+
+  const lessons = blueprint.lessons.map((lesson) => {
+    const completed = learningState.completedLessonOrders.includes(lesson.order);
+    const currentLesson = Number(learningState.currentLessonOrder) === Number(lesson.order);
+    return {
+      id: `${activeCourse.id}-lesson-${lesson.order}`,
+      order: lesson.order,
+      title: lesson.title,
+      durationMin: lesson.durationMin,
+      status: completed ? 'concluida' : currentLesson ? 'atual' : 'pendente',
+    };
+  });
+
+  const completionPercent = Number(learningState.completionPercent) || blueprint.completionPercent;
+  const completedLessons = lessons.filter(item => item.status === 'concluida').length;
+  const currentLessonOrder = Number(learningState.currentLessonOrder) || blueprint.currentLessonOrder;
+  const currentLesson = lessons.find(item => item.order === currentLessonOrder) || lessons[0];
+  const nextLesson = lessons.find(item => item.order === currentLessonOrder + 1) || lessons[lessons.length - 1];
+  const totalLessonsDisplay = Math.max(lessons.length * 4, 20);
+  const studiedLessonsDisplay = Math.min(totalLessonsDisplay, Math.max(13, completedLessons * 4 + 1));
+  const totalCourseMinutes = toMinutes(activeCourse.duracao || '') || blueprint.lessons.reduce((sum, lesson) => sum + lesson.durationMin, 0);
+  const statusLabel = completionPercent >= 100 ? 'Concluído' : 'Em andamento';
+  const validation = blueprint.validation.map((item) => (
+    item.id === 'progresso'
+      ? { ...item, detail: `${studiedLessonsDisplay} de ${totalLessonsDisplay} aulas` }
+      : item.id === 'carga-horaria'
+        ? { ...item, detail: `12h 00m / ${formatMinutes(totalCourseMinutes)}` }
+        : item
+  ));
+  const nextLessonType = blueprint.nextLesson.type || 'Teórica';
+  const nextLessonDuration = `${nextLesson?.durationMin || blueprint.nextLesson.duration || 45} min`;
+
+  return {
+    user: {
+      id: current.id,
+      name: current.name,
+      email: current.email || activeStudent.email || '',
+      role: current.role,
+      company: activeStudent.empresa || current.empresa || activeCourse.empresaContratante || '',
+      initials: String(current.name || activeStudent.nome || 'A').trim().charAt(0).toUpperCase(),
+    },
+    activeCourseId: activeCourse.id,
+    courses: availableCourses.map((course) => ({
+      id: course.id,
+      title: course.nomeCurso,
+      subtitle: course.empresaContratante || 'Curso ativo',
+    })),
+    summary: {
+      completionPercent,
+      completedLessonsLabel: `${studiedLessonsDisplay} / ${totalLessonsDisplay}`,
+      totalDurationLabel: formatMinutes(totalCourseMinutes),
+      statusLabel,
+      encouragement: completionPercent >= 100 ? 'Você concluiu o curso!' : 'Continue assim!',
+      startedLessons: studiedLessonsDisplay,
+      totalLessons: totalLessonsDisplay,
+    },
+    lessons,
+    slides: {
+      ...blueprint.slides,
+      lessonOrder: currentLessonOrder,
+      title: currentLesson?.title || blueprint.slides.title,
+    },
+    video: blueprint.video,
+    materials: blueprint.materials.map((item) => ({
+      ...item,
+      sizeLabel: formatFileSize(item.sizeBytes),
+      opened: Array.isArray(learningState.openedMaterials) && learningState.openedMaterials.includes(item.id),
+    })),
+    activities: blueprint.activities.map((item) => ({
+      ...item,
+      status: learningState.activityStatuses?.[item.id] || item.status,
+    })),
+    validation,
+    nextLesson: {
+      title: `Aula ${nextLesson?.order || currentLessonOrder} - ${nextLesson?.title || currentLesson?.title || blueprint.nextLesson.title}`,
+      type: nextLessonType,
+      duration: nextLessonDuration,
+    },
+    support: blueprint.support,
+    updatedAt: learningState.lastViewedAt || new Date().toISOString(),
+  };
+}
+
+function updateStudentPortalState(auth = {}, payload = {}) {
+  const current = currentUserFromAuth(auth);
+  if (!current) return { status: 401, error: 'Usuário não encontrado.' };
+  const courseId = Number(payload.courseId || 0);
+  const course = courses.find((item) => Number(item.id) === courseId);
+  if (!course) return { status: 404, error: 'Curso não encontrado.' };
+  const learningState = getOrCreateLearningState(current, course);
+  const action = String(payload.action || '').trim().toLowerCase();
+
+  if (action === 'select-course') {
+    users = users.map((item) => (
+      String(item.id) === String(current.id)
+        ? { ...item, selectedCourseId: course.id, updatedAt: new Date().toISOString() }
+        : item
+    ));
+  }
+
+  if (action === 'open-material') {
+    const materialId = String(payload.materialId || '').trim();
+    if (materialId && !learningState.openedMaterials.includes(materialId)) {
+      learningState.openedMaterials.push(materialId);
+    }
+  }
+
+  if (action === 'complete-lesson') {
+    const lessonOrder = Number(payload.lessonOrder || learningState.currentLessonOrder || 1);
+    if (!learningState.completedLessonOrders.includes(lessonOrder)) {
+      learningState.completedLessonOrders.push(lessonOrder);
+      learningState.completedLessonOrders = [...new Set(learningState.completedLessonOrders)].sort((a, b) => a - b);
+    }
+    learningState.currentLessonOrder = Math.min(lessonOrder + 1, 5);
+    learningState.completionPercent = Math.min(100, Math.max(learningState.completionPercent, Math.round((learningState.completedLessonOrders.length / 5) * 100)));
+  }
+
+  if (action === 'start-activity' || action === 'advance-activity') {
+    const activityId = String(payload.activityId || '').trim();
+    if (activityId) {
+      learningState.activityStatuses = {
+        ...(learningState.activityStatuses || {}),
+        [activityId]: action === 'advance-activity' ? 'concluida' : 'em_andamento',
+      };
+      learningState.activeActivityId = activityId;
+    }
+  }
+
+  learningState.lastViewedAt = new Date().toISOString();
+  persistData();
+  return buildStudentPortalPayload(auth);
 }
 
 function businessScopedClasses(auth = {}) {
@@ -958,6 +1305,9 @@ function createManagedUser(payload = {}) {
     ? normalizeUserStatus(payload.status || 'pendente')
     : normalizeUserStatus(payload.status);
   const empresa = String(payload.empresa || '').trim();
+  const studentId = payload.studentId !== undefined && payload.studentId !== null && String(payload.studentId).trim()
+    ? String(payload.studentId).trim()
+    : null;
   const password = role === 'empresario'
     ? (providedPassword || generateTemporaryPassword())
     : providedPassword;
@@ -989,6 +1339,10 @@ function createManagedUser(payload = {}) {
     empresa,
     tipo,
     status,
+    studentId,
+    selectedCourseId: payload.selectedCourseId !== undefined && payload.selectedCourseId !== null && String(payload.selectedCourseId).trim()
+      ? Number(payload.selectedCourseId)
+      : null,
     mustChangePassword: role === 'empresario',
     temporaryPasswordGeneratedAt: role === 'empresario' ? new Date().toISOString() : null,
     createdAt: new Date().toISOString(),
@@ -1014,6 +1368,12 @@ function updateManagedUser(id, payload = {}) {
   const nextTipo = payload.tipo !== undefined ? (payload.tipo === 'instrutor' ? 'instrutor' : 'usuario') : target.tipo;
   const nextPassword = payload.password !== undefined ? String(payload.password || '').trim() : target.password;
   const nextEmpresa = payload.empresa !== undefined ? String(payload.empresa || '').trim() : String(target.empresa || '').trim();
+  const nextStudentId = payload.studentId !== undefined
+    ? (payload.studentId === null || payload.studentId === '' ? null : String(payload.studentId).trim())
+    : (target.studentId || null);
+  const nextSelectedCourseId = payload.selectedCourseId !== undefined
+    ? (payload.selectedCourseId === null || payload.selectedCourseId === '' ? null : Number(payload.selectedCourseId))
+    : (target.selectedCourseId || null);
 
   if (!nextName || !nextUsername || !nextEmail) {
     return { status: 400, error: 'Nome, usuário e e-mail são obrigatórios.' };
@@ -1046,6 +1406,8 @@ function updateManagedUser(id, payload = {}) {
     password: nextPassword,
     role: nextRole,
     empresa: nextEmpresa,
+    studentId: nextStudentId,
+    selectedCourseId: nextSelectedCourseId,
     tipo: nextTipo,
     status: nextStatus,
     updatedAt: new Date().toISOString(),
@@ -3724,6 +4086,31 @@ const server = createServer(async (req, res) => {
       return;
     }
     sendJson(res, 200, buildDashboard());
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/student-portal') {
+    const result = buildStudentPortalPayload(req.auth || {});
+    if (result?.error) {
+      sendJson(res, result.status || 400, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/student-portal') {
+    const body = await readJson(req);
+    if (!body) {
+      badRequest(res, 'JSON invalido.');
+      return;
+    }
+    const result = updateStudentPortalState(req.auth || {}, body);
+    if (result?.error) {
+      sendJson(res, result.status || 400, { error: result.error });
+      return;
+    }
+    sendJson(res, 200, result);
     return;
   }
 

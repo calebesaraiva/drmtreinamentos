@@ -108,6 +108,11 @@ export const api = {
     method: 'DELETE',
   }),
   getDashboard: () => request('/api/dashboard'),
+  getStudentPortal: () => request('/api/student-portal'),
+  updateStudentPortal: (payload) => request('/api/student-portal', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   getAuditLogs: (params = {}) => {
     const qs = new URLSearchParams();
     Object.entries(params || {}).forEach(([key, value]) => {

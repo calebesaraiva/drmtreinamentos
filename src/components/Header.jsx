@@ -6,6 +6,7 @@ import BrandLogo from './BrandLogo';
 
 const PAGE_TITLES = {
   '/dashboard': 'Dashboard',
+  '/recursos-didaticos': 'Recursos Didáticos',
   '/qrcode': 'Cursos e QR Code',
   '/cronograma': 'Cronograma',
   '/chamada': 'Chamada',

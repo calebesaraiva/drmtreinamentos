@@ -35,7 +35,13 @@ export default function Login() {
         return;
       }
       const role = String(result.user?.role || '').toLowerCase();
-      const target = location.state?.from || (role === 'empresario' ? '/pre-cadastro-empresarial' : '/dashboard');
+      const target = location.state?.from || (
+        role === 'empresario'
+          ? '/pre-cadastro-empresarial'
+          : role === 'aluno'
+            ? '/recursos-didaticos'
+            : '/dashboard'
+      );
       navigate(target, { replace: true });
     } else {
       setError(result.error);

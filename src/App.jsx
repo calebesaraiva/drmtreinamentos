@@ -25,6 +25,7 @@ import BuscaGlobalPage from './pages/BuscaGlobalPage';
 import PrimeiroAcessoPage from './pages/PrimeiroAcessoPage';
 import AuditoriaPage from './pages/AuditoriaPage';
 import ConferenciaPage from './pages/ConferenciaPage';
+import RecursosDidaticosPage from './pages/RecursosDidaticosPage';
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="recursos-didaticos" element={<RecursosDidaticosPage />} />
             <Route path="qrcode" element={<QRCodePage />} />
             <Route path="cronograma" element={<CronogramaPage />} />
             <Route path="chamada" element={<ChamadaPage />} />

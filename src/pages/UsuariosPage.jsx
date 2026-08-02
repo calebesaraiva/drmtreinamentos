@@ -190,6 +190,7 @@ export default function UsuariosPage() {
               }))}
             >
               <option value="instrutor">Instrutor</option>
+              <option value="aluno">Aluno</option>
               <option value="usuario">Usuário</option>
               <option value="empresario">Empresário / Cliente</option>
               <option value="responsavel">Responsável</option>
@@ -312,6 +313,7 @@ export default function UsuariosPage() {
                         }))}
                       >
                         <option value="instrutor">Instrutor</option>
+                        <option value="aluno">Aluno</option>
                         <option value="usuario">Usuário</option>
                         <option value="empresario">Empresário / Cliente</option>
                         <option value="responsavel">Responsável</option>
