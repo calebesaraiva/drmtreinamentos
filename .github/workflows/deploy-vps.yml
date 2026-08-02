@@ -20,13 +20,7 @@ jobs:
         run: |
           ARCHIVE_PATH="drm-deploy.tar.gz"
           rm -f "$ARCHIVE_PATH"
-          tar -czf "$ARCHIVE_PATH" \
-            --exclude .git \
-            --exclude node_modules \
-            --exclude dist \
-            --exclude drm-deploy.tar.gz \
-            --exclude tmp-cert-tests \
-            .
+          git archive --format=tar.gz --output="$ARCHIVE_PATH" HEAD
 
       - name: Upload archive to VPS
         uses: appleboy/scp-action@v0.1.7
