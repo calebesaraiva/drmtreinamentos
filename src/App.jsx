@@ -39,7 +39,16 @@ export default function App() {
           <Route path="/" element={<Layout />}>
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
-            <Route path="recursos-didaticos" element={<RecursosDidaticosPage />} />
+            <Route path="recursos-didaticos" element={<Navigate to="/aluno/recursos-didaticos" replace />} />
+            <Route path="aluno/dashboard" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/meus-cursos" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/recursos-didaticos" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/atividades" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/avaliacoes" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/certificados" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/mensagens" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/forum-suporte" element={<RecursosDidaticosPage />} />
+            <Route path="aluno/faq" element={<RecursosDidaticosPage />} />
             <Route path="qrcode" element={<QRCodePage />} />
             <Route path="cronograma" element={<CronogramaPage />} />
             <Route path="chamada" element={<ChamadaPage />} />

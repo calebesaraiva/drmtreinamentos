@@ -13,13 +13,24 @@ export default function Layout() {
   }
   const role = String(user.role || '').toLowerCase();
   const allowedBusinessRoutes = new Set(['/dashboard', '/pre-cadastro-empresarial', '/empresario-historico']);
-  const allowedStudentRoutes = new Set(['/recursos-didaticos']);
-  const isStudentPortal = role === 'aluno' && location.pathname === '/recursos-didaticos';
+  const allowedStudentRoutes = new Set([
+    '/aluno/dashboard',
+    '/aluno/meus-cursos',
+    '/aluno/recursos-didaticos',
+    '/aluno/atividades',
+    '/aluno/avaliacoes',
+    '/aluno/certificados',
+    '/aluno/mensagens',
+    '/aluno/forum-suporte',
+    '/aluno/faq',
+    '/recursos-didaticos',
+  ]);
+  const isStudentPortal = role === 'aluno' && allowedStudentRoutes.has(location.pathname);
   if (role === 'empresario' && !allowedBusinessRoutes.has(location.pathname)) {
     return <Navigate to="/dashboard" replace />;
   }
   if (role === 'aluno' && !allowedStudentRoutes.has(location.pathname)) {
-    return <Navigate to="/recursos-didaticos" replace />;
+    return <Navigate to="/aluno/dashboard" replace />;
   }
 
   return (

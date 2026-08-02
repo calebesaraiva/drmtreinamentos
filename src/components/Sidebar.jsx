@@ -32,15 +32,15 @@ const navItems = [
 ];
 
 const studentNavItems = [
-  { icon: LayoutDashboard, label: 'Dashboard' },
-  { icon: BookOpen, label: 'Meus Cursos' },
-  { to: '/recursos-didaticos', icon: BookOpenCheck, label: 'Recursos Didáticos' },
-  { icon: ClipboardListAlt, label: 'Atividades' },
-  { icon: FileCheck2, label: 'Avaliações' },
-  { icon: Award, label: 'Certificados' },
-  { icon: Mail, label: 'Mensagens', badge: '2' },
-  { icon: MessageSquare, label: 'Fórum / Suporte' },
-  { icon: CircleHelp, label: 'FAQ' },
+  { to: '/aluno/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/aluno/meus-cursos', icon: BookOpen, label: 'Meus Cursos' },
+  { to: '/aluno/recursos-didaticos', icon: BookOpenCheck, label: 'Recursos Didáticos' },
+  { to: '/aluno/atividades', icon: ClipboardListAlt, label: 'Atividades' },
+  { to: '/aluno/avaliacoes', icon: FileCheck2, label: 'Avaliações' },
+  { to: '/aluno/certificados', icon: Award, label: 'Certificados' },
+  { to: '/aluno/mensagens', icon: Mail, label: 'Mensagens', badge: '2' },
+  { to: '/aluno/forum-suporte', icon: MessageSquare, label: 'Fórum / Suporte' },
+  { to: '/aluno/faq', icon: CircleHelp, label: 'FAQ' },
 ];
 
 export default function Sidebar() {
@@ -67,7 +67,7 @@ export default function Sidebar() {
       {/* Sidebar */}
       <aside
         className={`
-          fixed top-0 left-0 h-full z-30 w-64
+          fixed top-0 left-0 h-full z-30 w-[250px]
           flex flex-col sidebar-transition shadow-2xl
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:translate-x-0 lg:static lg:z-auto
@@ -78,7 +78,7 @@ export default function Sidebar() {
           <>
             <div className="px-4 pt-4 pb-3 border-b border-[#fb7a141f]">
               <div className="flex items-center justify-between">
-                <BrandLogo className="w-[140px] h-[74px] rounded-[18px] border border-white/45 bg-[#05080f] px-3 py-2 shadow-[0_16px_40px_rgba(0,0,0,0.35)]" />
+                <BrandLogo className="w-[128px] h-[66px] rounded-[18px] border border-white/45 bg-[#05080f] px-3 py-2 shadow-[0_16px_40px_rgba(0,0,0,0.35)]" />
                 <button
                   onClick={() => setSidebarOpen(false)}
                   className="lg:hidden text-gray-400 hover:text-white transition-colors"
@@ -91,26 +91,26 @@ export default function Sidebar() {
             {user && (
               <div className="border-b border-[#fb7a1452] px-4 py-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-full bg-[#ff7a00] flex items-center justify-center shadow-[0_12px_24px_rgba(255,122,0,0.32)]">
-                    <span className="text-white text-[17px] font-extrabold">
+                  <div className="w-10 h-10 rounded-full bg-[#ff7a00] flex items-center justify-center shadow-[0_12px_24px_rgba(255,122,0,0.32)]">
+                    <span className="text-white text-[16px] font-extrabold">
                       {user.name.charAt(0).toUpperCase()}
                     </span>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-white text-[15px] font-bold truncate">Aluno</p>
-                    <p className="text-[#d5dae3] text-sm truncate">Ver meu perfil</p>
+                    <p className="text-white text-[14px] font-bold truncate">Aluno</p>
+                    <p className="text-[#d5dae3] text-[13px] truncate">Ver meu perfil</p>
                   </div>
                 </div>
               </div>
             )}
 
-            <nav className="flex-1 overflow-y-auto py-5">
-              <p className="px-6 text-[12px] font-semibold uppercase tracking-[0.16em] text-[#9da5b4] mb-3">Menu</p>
+            <nav className="flex-1 overflow-y-auto py-4">
+              <p className="px-6 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#9da5b4] mb-3">Menu</p>
               <div className="space-y-1.5 px-3">
                 {studentNavItems.map(({ to, icon: Icon, label, badge }) => {
                   const content = (
                     <>
-                      <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+                      <Icon className="w-[17px] h-[17px] flex-shrink-0" />
                       <span className="flex-1">{label}</span>
                       {badge ? (
                         <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#ff7a00] text-white text-[11px] font-bold flex items-center justify-center">
@@ -126,7 +126,7 @@ export default function Sidebar() {
                         key={label}
                         to={to}
                         onClick={() => setSidebarOpen(false)}
-                        className={({ isActive }) => `flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] transition-all ${
+                        className={({ isActive }) => `flex items-center gap-3 rounded-xl px-4 py-2.5 text-[14px] transition-all ${
                           isActive
                             ? 'bg-[#ff7a00] text-white shadow-[0_18px_34px_rgba(255,122,0,0.28)]'
                             : 'text-[#edf2f7] hover:bg-white/5'
@@ -140,7 +140,7 @@ export default function Sidebar() {
                   return (
                     <div
                       key={label}
-                      className="flex items-center gap-3 rounded-xl px-4 py-3 text-[15px] text-[#edf2f7]/96"
+                      className="flex items-center gap-3 rounded-xl px-4 py-2.5 text-[14px] text-[#edf2f7]/96"
                     >
                       {content}
                     </div>

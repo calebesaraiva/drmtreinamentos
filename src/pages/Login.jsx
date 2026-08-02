@@ -39,7 +39,7 @@ export default function Login() {
         role === 'empresario'
           ? '/pre-cadastro-empresarial'
           : role === 'aluno'
-            ? '/recursos-didaticos'
+            ? '/aluno/dashboard'
             : '/dashboard'
       );
       navigate(target, { replace: true });
